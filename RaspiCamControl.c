@@ -38,7 +38,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "interface/mmal/util/mmal_util.h"
 #include "interface/mmal/util/mmal_util_params.h"
 #include "interface/mmal/util/mmal_default_components.h"
+
 #include "RaspiCamControl.h"
+
 
 /// Structure to cross reference exposure strings against the MMAL parameter equivalent
 static XREF_T  exposure_map[] =
@@ -57,7 +59,6 @@ static XREF_T  exposure_map[] =
    {"antishake",     MMAL_PARAM_EXPOSUREMODE_ANTISHAKE},
    {"fireworks",     MMAL_PARAM_EXPOSUREMODE_FIREWORKS}
 };
-
 static const int exposure_map_size = sizeof(exposure_map) / sizeof(exposure_map[0]);
 
 /// Structure to cross reference awb strings against the MMAL parameter equivalent
@@ -74,7 +75,6 @@ static XREF_T awb_map[] =
    {"flash",         MMAL_PARAM_AWBMODE_FLASH},
    {"horizon",       MMAL_PARAM_AWBMODE_HORIZON}
 };
-
 static const int awb_map_size = sizeof(awb_map) / sizeof(awb_map[0]);
 
 /// Structure to cross reference image effect against the MMAL parameter equivalent
@@ -101,9 +101,9 @@ static XREF_T imagefx_map[] =
    {"colourbalance", MMAL_PARAM_IMAGEFX_COLOURBALANCE},
    {"cartoon",       MMAL_PARAM_IMAGEFX_CARTOON}
  };
-
 static const int imagefx_map_size = sizeof(imagefx_map) / sizeof(imagefx_map[0]);
 
+/// Structure to cross reference metering mode strings against the MMAL parameter equivalent
 static XREF_T metering_mode_map[] =
 {
    {"average",       MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE},
@@ -111,9 +111,9 @@ static XREF_T metering_mode_map[] =
    {"backlit",       MMAL_PARAM_EXPOSUREMETERINGMODE_BACKLIT},
    {"matrix",        MMAL_PARAM_EXPOSUREMETERINGMODE_MATRIX}
 };
-
 static const int metering_mode_map_size = sizeof(metering_mode_map)/sizeof(metering_mode_map[0]);
 
+/// Structure to cross reference drc mode strings against the MMAL parameter equivalent
 static XREF_T drc_mode_map[] =
 {
    {"off",           MMAL_PARAMETER_DRC_STRENGTH_OFF},
@@ -121,17 +121,21 @@ static XREF_T drc_mode_map[] =
    {"med",           MMAL_PARAMETER_DRC_STRENGTH_MEDIUM},
    {"high",          MMAL_PARAMETER_DRC_STRENGTH_HIGH}
 };
-
 static const int drc_mode_map_size = sizeof(drc_mode_map)/sizeof(drc_mode_map[0]);
 
-static XREF_T stereo_mode_map[] =
+/// Structure to cross reference flash mode strings against the MMAL parameter equivalent
+static XREF_T flash_mode_map[] =
 {
-   {"off",           MMAL_STEREOSCOPIC_MODE_NONE},
-   {"sbs",           MMAL_STEREOSCOPIC_MODE_SIDE_BY_SIDE},
-   {"tb",            MMAL_STEREOSCOPIC_MODE_TOP_BOTTOM},
+    {"off",          MMAL_PARAM_FLASH_OFF},
+    {"auto",         MMAL_PARAM_FLASH_AUTO},
+    {"on",           MMAL_PARAM_FLASH_ON},
+    {"redeye",       MMAL_PARAM_FLASH_REDEYE},
+    {"fillin",       MMAL_PARAM_FLASH_FILLIN},
+    {"torch",        MMAL_PARAM_FLASH_TORCH},
+    {"max",          MMAL_PARAM_FLASH_MAX}
 };
+static const int flash_mode_map_size = sizeof(flash_mode_map)/sizeof(flash_mode_map[0]);
 
-static const int stereo_mode_map_size = sizeof(stereo_mode_map)/sizeof(stereo_mode_map[0]);
 
 #define zoom_full_16P16 ((unsigned int)(65536 * 0.15))
 #define zoom_increment_16P16 (65536UL / 10)
@@ -144,17 +148,11 @@ static const int stereo_mode_map_size = sizeof(stereo_mode_map)/sizeof(stereo_mo
  * @param num_refs The number of items in the mapping data
  * @return const pointer to string, or NULL if no match
  */
-const char *raspicli_unmap_xref(const int en, XREF_T *map, int num_refs)
-{
+const char *raspicli_unmap_xref(const int en, XREF_T *map, int num_refs) {
     int i;
-    
     for (i=0;i<num_refs;i++)
-    {
         if (en == map[i].mmal_mode)
-        {
             return map[i].mode;
-        }
-    }
     return NULL;
 }
 /**
@@ -164,17 +162,11 @@ const char *raspicli_unmap_xref(const int en, XREF_T *map, int num_refs)
  * @param num_refs The number of items in the mapping data
  * @return The integer match for the string, or -1 if no match
  */
-int raspicli_map_xref(const char *str, const XREF_T *map, int num_refs)
-{
+int raspicli_map_xref(const char *str, const XREF_T *map, int num_refs) {
     int i;
-    
     for (i=0;i<num_refs;i++)
-    {
         if (!strcasecmp(str, map[i].mode))
-        {
             return map[i].mmal_mode;
-        }
-    }
     return -1;
 }
 
@@ -259,20 +251,24 @@ static MMAL_PARAMETER_DRC_STRENGTH_T drc_mode_from_string(const char *str)
 }
 
 /**
- * Convert string to the MMAL parameter for exposure metering mode
+ * Convert string to the MMAL parameter for DRC level
  * @param str Incoming string to match
  * @return MMAL parameter matching the string, or the AUTO option if no match found
  */
-static MMAL_STEREOSCOPIC_MODE_T stereo_mode_from_string(const char *str)
+static MMAL_PARAM_FLASH_T flash_mode_from_string(const char *str)
 {
-   int i = raspicli_map_xref(str, stereo_mode_map, stereo_mode_map_size);
-
-   if( i != -1)
-      return (MMAL_STEREOSCOPIC_MODE_T)i;
-
-   vcos_log_error("Unknown metering mode: %s", str);
-   return MMAL_STEREOSCOPIC_MODE_NONE;
+    int i = raspicli_map_xref(str, flash_mode_map, flash_mode_map_size);
+    
+    if( i != -1)
+        return (MMAL_PARAM_FLASH_T)i;
+    
+    vcos_log_error("Unknown DRC level: %s", str);
+    return MMAL_PARAM_FLASH_OFF;
 }
+
+
+
+
 
 /**
  * Dump contents of camera parameter structure to stderr for debugging/verbose logging
@@ -353,6 +349,7 @@ void raspicamcontrol_set_defaults(RASPICAM_CAMERA_PARAMETERS *params)
    params->colourEffects.enable = 0;
    params->colourEffects.u = 128;
    params->colourEffects.v = 128;
+    params->flashMode = MMAL_PARAM_FLASH_OFF;
    params->rotation = 0;
    params->hflip = params->vflip = 0;
    params->roi.x = params->roi.y = 0.0;
@@ -362,14 +359,6 @@ void raspicamcontrol_set_defaults(RASPICAM_CAMERA_PARAMETERS *params)
    params->awb_gains_b = 0;
    params->drc_level = MMAL_PARAMETER_DRC_STRENGTH_OFF;
    params->stats_pass = MMAL_FALSE;
-   params->enable_annotate = 0;
-   params->annotate_string[0] = '\0';
-   params->annotate_text_size = 0;	//Use firmware default
-   params->annotate_text_colour = -1;   //Use firmware default
-   params->annotate_bg_colour = -1;     //Use firmware default
-   params->stereo_mode.mode = MMAL_STEREOSCOPIC_MODE_NONE;
-   params->stereo_mode.decimate = MMAL_FALSE;
-   params->stereo_mode.swap_eyes = MMAL_FALSE;
 }
 
 /**
