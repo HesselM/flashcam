@@ -62,6 +62,9 @@ namespace flashcam {
     private:
         MMAL_COMPONENT_T *camera;
         
+        int setParameterRational( int id , int  val );
+        int getParameterRational( int id , int *val );
+        
         
     public:
         
@@ -246,30 +249,30 @@ namespace flashcam {
         /*
             MMAL_RATIONAL_T value = {contrast, 100};
          */
-        void setContrast ( int contrast ); 
-        int getContrast ( void );
+        int setContrast ( int  contrast ); 
+        int getContrast ( int *contrast );
 
         //MMAL_PARAMETER_BRIGHTNESS,                /**< Takes a @ref MMAL_PARAMETER_RATIONAL_T */
         //    0 to 100 
         /*
             MMAL_RATIONAL_T value = {brightness, 100};
          */
-        void setBrightness ( unsigned int brightness );    
-        unsigned int getBrightness ( void );
+        int setBrightness ( int  brightness );    
+        int getBrightness ( int *brightness );
 
         //MMAL_PARAMETER_SATURATION,                /**< Takes a @ref MMAL_PARAMETER_RATIONAL_T */
         // -100 to 100  
         /*
             MMAL_RATIONAL_T value = {saturation, 100};
          */
-        void setSaturation ( int saturation ); 
-        int getSaturation ( void );
+        int setSaturation ( int  saturation ); 
+        int getSaturation ( int *saturation );
 
         /* 0x30 */
         //MMAL_PARAMETER_ISO,                       /**< Takes a @ref MMAL_PARAMETER_UINT32_T */
-        //    0 to ??
-        void setISO ( unsigned int iso );
-        unsigned int getISO ( void );
+        //    0 to 1600
+        int setISO ( unsigned int  iso );
+        int getISO ( unsigned int *iso );
 
         //MMAL_PARAMETER_ANTISHAKE,                 /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
         //MMAL_PARAMETER_IMAGE_EFFECT_PARAMETERS,   /**< Takes a @ref MMAL_PARAMETER_IMAGEFX_PARAMETERS_T */
@@ -295,9 +298,9 @@ namespace flashcam {
         // ---> not used/supported/directly controllable in this lib
         
         //MMAL_PARAMETER_SHUTTER_SPEED,             /**< Takes a @ref MMAL_PARAMETER_UINT32_T */
-        //   0 to ?? (microseconds)
-        void setShutterSpeed ( unsigned int speed );
-        unsigned int getShutterSpeed ( void );
+        //   0 to 330000 (microseconds)
+        int setShutterSpeed ( unsigned int  speed );
+        int getShutterSpeed ( unsigned int *speed );
         
         //MMAL_PARAMETER_CUSTOM_AWB_GAINS,          /**< Takes a @ref MMAL_PARAMETER_AWB_GAINS_T */
         // ONLY WHEN AWB=OFF
@@ -307,10 +310,8 @@ namespace flashcam {
             param.b_gain.num = (unsigned int)(b_gain * 65536);
             param.r_gain.den = param.b_gain.den = 65536;
         */
-        void setGainRed ( float red );
-        float getGainRed ( void );
-        void setGainBlue ( float blue);
-        float getGainBlue ( void );
+        int setAWBGains ( float  red , float  blue );
+        int getAWBGains ( float *red , float *blue );
         
         //MMAL_PARAMETER_CAMERA_SETTINGS,           /**< Takes a @ref MMAL_PARAMETER_CAMERA_SETTINGS_T */
         //MMAL_PARAMETER_PRIVACY_INDICATOR,         /**< Takes a @ref MMAL_PARAMETER_PRIVACY_INDICATOR_T */
@@ -319,8 +320,8 @@ namespace flashcam {
 
         //MMAL_PARAMETER_STILLS_DENOISE,            /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
         // 1 or 0
-        void setDenoise ( unsigned int denoise);
-        unsigned int getDenoise ( void );
+        int setDenoise ( int  denoise );
+        int getDenoise ( int *denoise );
         
         //MMAL_PARAMETER_ANNOTATE,                  /**< Takes a @ref MMAL_PARAMETER_CAMERA_ANNOTATE_T */
         //MMAL_PARAMETER_STEREOSCOPIC_MODE,         /**< Takes a @ref MMAL_PARAMETER_STEREOSCOPIC_MODE_T */
