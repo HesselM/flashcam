@@ -4,7 +4,9 @@ extern "C" {
 #include "interface/mmal/util/mmal_util_params.h"
 }
 
-#define FLASHCAMOUTPUT 1
+
+// Capture port..
+#define FLASHCAMOUTPUT 2
 
 #define DEBUG 1
 

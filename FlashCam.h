@@ -70,7 +70,7 @@ extern "C" {
         int contrast;                               // Image Contrast  : -100    to    100
         int brightness;                             // Image Brightness:    0    to    100
         int saturation;                             // Image Saturation: -100    to    100
-        unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work)
+        unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work; 0=auto)
         unsigned int speed;                         // Shutterspeed    :    0    to 330000    (microseconds)
         float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
         float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
@@ -102,8 +102,10 @@ extern "C" {
         
             
         void setCamera(MMAL_COMPONENT_T *camera);
-        int setAllParams(FLASHCAM_PARAMS_T *params);
-        int getAllParams(FLASHCAM_PARAMS_T *params);
+        
+        void getDefaultParams(FLASHCAM_PARAMS_T *params);
+        int  setAllParams(FLASHCAM_PARAMS_T *params);
+        int  getAllParams(FLASHCAM_PARAMS_T *params);
         void printParams(FLASHCAM_PARAMS_T *params);
         
         /*
@@ -118,6 +120,124 @@ extern "C" {
         -    params->stats_pass = MMAL_FALSE;
 
         */
+        
+        
+/* Python:PiCamera
+        def _init_defaults(self):
+        self.sharpness = 0
+        self.contrast = 0
+        self.brightness = 50
+        self.saturation = 0
+        self.iso = 0 # auto
+        self.video_stabilization = False
+        self.exposure_compensation = 0
+        self.exposure_mode = 'auto'
+        self.meter_mode = 'average'
+        self.awb_mode = 'auto'
+        self.image_effect = 'none'
+        self.color_effects = None
+        self.rotation = 0
+        self.hflip = self.vflip = False
+        self.zoom = (0.0, 0.0, 1.0, 1.0)
+*/
+    
+/*
+    CAMAVA:private_still
+        width = 640;
+        height = 480;
+        encoding = CAMAVA_ENCODING_BMP;
+        encoder = NULL;
+        encoder_connection = NULL;
+        sharpness = 0;
+        contrast = 0;
+        brightness = 50;
+        quality = 85;
+        saturation = 0;
+        iso = 400;
+        //videoStabilisation = 0;
+        //exposureCompensation = 0;
+        exposure = CAMAVA_EXPOSURE_AUTO;
+        metering = CAMAVA_METERING_AVERAGE;
+        awb = CAMAVA_AWB_AUTO;
+        imageEffect = CAMAVA_IMAGE_EFFECT_NONE;
+        //colourEffects.enable = 0;
+        //colourEffects.u = 128;
+        //colourEffects.v = 128;
+        rotation = 0;
+        changedSettings = true;
+        horizontalFlip = false;
+        verticalFlip = false;
+        //roi.x = params->roi.y = 0.0;
+        //roi.w = params->roi.h = 1.0;
+*/
+        
+/*
+         CAMAVA:private_still
+         // Default everything to zero
+         memset ( &State, 0, sizeof ( RASPIVID_STATE ) );
+         State.framerate 		= 10;
+         State.width 			= 1280;      // use a multiple of 320 (640, 1280)
+         State.height 			= 960;		// use a multiple of 240 (480, 960)
+         State.sharpness = 0;
+         State.contrast = 0;
+         State.brightness = 50;
+         State.saturation = 0;
+         State.ISO = 400;
+         State.videoStabilisation = false;
+         State.exposureCompensation = 0;
+         State.captureFtm=CAMAVA_FORMAT_RGB;
+         State.rpc_exposureMode = CAMAVA_EXPOSURE_AUTO;
+         State.rpc_exposureMeterMode = CAMAVA_METERING_AVERAGE;
+         State.rpc_awbMode = CAMAVA_AWB_AUTO;
+         State.rpc_imageEffect = CAMAVA_IMAGE_EFFECT_NONE;
+         State.colourEffects.enable = 0;
+         State.colourEffects.u = 128;
+         State.colourEffects.v = 128;
+         State.rotation = 0;
+         State.hflip = State.vflip = 0;
+         State.roi.x = State.roi.y = 0.0;
+         State.roi.w = State.roi.h = 1.0;
+         State.shutterSpeed=0;//auto
+         State.awbg_red=1.0;
+         State.awbg_blue=1.0;
+         State.sensor_mode = 0; //do not set mode by default
+ */
+        
+/*      USERLAND 
+         params->sharpness = 0;
+         params->contrast = 0;
+         params->brightness = 50;
+         params->saturation = 0;
+         params->ISO = 0;                    // 0 = auto
+         params->videoStabilisation = 0;
+         params->exposureCompensation = 0;
+         params->exposureMode = MMAL_PARAM_EXPOSUREMODE_AUTO;
+         params->exposureMeterMode = MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE;
+         params->awbMode = MMAL_PARAM_AWBMODE_AUTO;
+         params->imageEffect = MMAL_PARAM_IMAGEFX_NONE;
+         params->colourEffects.enable = 0;
+         params->colourEffects.u = 128;
+         params->colourEffects.v = 128;
+         params->rotation = 0;
+         params->hflip = params->vflip = 0;
+         params->roi.x = params->roi.y = 0.0;
+         params->roi.w = params->roi.h = 1.0;
+         params->shutter_speed = 0;          // 0 = auto
+         params->awb_gains_r = 0;      // Only have any function if AWB OFF is used.
+         params->awb_gains_b = 0;
+         params->drc_level = MMAL_PARAMETER_DRC_STRENGTH_OFF;
+         params->stats_pass = MMAL_FALSE;
+         params->enable_annotate = 0;
+         params->annotate_string[0] = '\0';
+         params->annotate_text_size = 0;	//Use firmware default
+         params->annotate_text_colour = -1;   //Use firmware default
+         params->annotate_bg_colour = -1;     //Use firmware default
+         params->stereo_mode.mode = MMAL_STEREOSCOPIC_MODE_NONE;
+         params->stereo_mode.decimate = MMAL_FALSE;
+         params->stereo_mode.swap_eyes = MMAL_FALSE;
+ */
+        
+        
         
         
         
@@ -160,7 +280,12 @@ extern "C" {
         int getAWBMode ( MMAL_PARAM_AWBMODE_T *awb );
 
         //MMAL_PARAMETER_IMAGE_EFFECT,              /**< Takes a @ref MMAL_PARAMETER_IMAGEFX_T */
+        // ---> TODO
+        
         //MMAL_PARAMETER_COLOUR_EFFECT,             /**< Takes a @ref MMAL_PARAMETER_COLOURFX_T */
+        // ---> TODO
+
+        
         //MMAL_PARAMETER_FLICKER_AVOID,             /**< Takes a @ref MMAL_PARAMETER_FLICKERAVOID_T */
         // ---> not used/supported/directly controllable in this lib
         
@@ -180,7 +305,11 @@ extern "C" {
         //MMAL_PARAMETER_REDEYE,                    /**< Takes a @ref MMAL_PARAMETER_REDEYE_T */
         //MMAL_PARAMETER_FOCUS,                     /**< Takes a @ref MMAL_PARAMETER_FOCUS_T */
         //MMAL_PARAMETER_FOCAL_LENGTHS,             /**< Unused? */
+        // ---> not used/supported/directly controllable in this lib
+
         //MMAL_PARAMETER_EXPOSURE_COMP,             /**< Takes a @ref MMAL_PARAMETER_INT32_T or MMAL_PARAMETER_RATIONAL_T */
+        // ---> TODO
+    
         //MMAL_PARAMETER_ZOOM,                      /**< Takes a @ref MMAL_PARAMETER_SCALEFACTOR_T */
         // ---> not used/supported/directly controllable in this lib
 
@@ -257,6 +386,8 @@ extern "C" {
         //MMAL_PARAMETER_CAPTURE_MODE,              /**< Takes a @ref MMAL_PARAMETER_CAPTUREMODE_T */
         //MMAL_PARAMETER_FOCUS_REGIONS,             /**< Takes a @ref MMAL_PARAMETER_FOCUS_REGIONS_T */
         //MMAL_PARAMETER_INPUT_CROP,                /**< Takes a @ref MMAL_PARAMETER_INPUT_CROP_T */
+        // ---> TODO
+        
         //MMAL_PARAMETER_SENSOR_INFORMATION,        /**< Takes a @ref MMAL_PARAMETER_SENSOR_INFORMATION_T */
         //MMAL_PARAMETER_FLASH_SELECT,              /**< Takes a @ref MMAL_PARAMETER_FLASH_SELECT_T */
         //MMAL_PARAMETER_FIELD_OF_VIEW,             /**< Takes a @ref MMAL_PARAMETER_FIELD_OF_VIEW_T */
