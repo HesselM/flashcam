@@ -46,8 +46,13 @@
  * We use the RaspiCamControl code to handle the specific camera settings.
  */
 
+#include "FlashCam.h"
+//#include "types.h"
+    
+extern "C" {
+    
 // We use some GNU extensions (asprintf, basename)
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,7 +107,6 @@
 #define FRAME_NEXT_IMMEDIATELY   6
 
 
-int mmal_status_to_int(MMAL_STATUS_T status);
 static void signal_handler(int signal_number);
 
 
@@ -499,6 +503,7 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
     MMAL_ES_FORMAT_T *format;
     MMAL_PORT_T *preview_port = NULL, *video_port = NULL, *still_port = NULL;
     MMAL_STATUS_T status;
+    MMAL_PARAMETER_INT32_T camera_num;
     
     /* Create the component */
     status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &camera);
@@ -520,8 +525,7 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
         goto error;
     }
     
-    MMAL_PARAMETER_INT32_T camera_num =
-    {{MMAL_PARAMETER_CAMERA_NUM, sizeof(camera_num)}, state->cameraNum};
+    camera_num = {{MMAL_PARAMETER_CAMERA_NUM, sizeof(camera_num)}, state->cameraNum};
     
     status = mmal_port_parameter_set(camera->control, &camera_num.hdr);
     
@@ -1013,7 +1017,7 @@ static void rename_file(RASPISTILL_STATE *state, FILE *output_file,
 /**
  * main
  */
-int main(int argc, const char **argv)
+int old_main()
 {
     // Our main data storage vessel..
     RASPISTILL_STATE state = {0};
@@ -1046,7 +1050,7 @@ int main(int argc, const char **argv)
     
     if (state.verbose)
     {
-        fprintf(stderr, "\n%s Camera App %s\n\n", basename(argv[0]), VERSION_STRING);
+        fprintf(stderr, "\nCamera App %s\n\n", VERSION_STRING);
         
         dump_status(&state);
     }
@@ -1293,4 +1297,11 @@ int main(int argc, const char **argv)
     return exit_code;
 }
 
+}
+
+    /* C++*/
+    
+int main(int argc, const char **argv) {
+    return old_main();
+}
 

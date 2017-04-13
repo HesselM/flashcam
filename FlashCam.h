@@ -42,7 +42,6 @@
 //#include "interface/vcos/vcos.h"
 
 //#include "interface/vmcs_host/vc_vchi_gencmd.h"
-#include "interface/mmal/mmal.h"
 //#include "interface/mmal/mmal_logging.h"
 //#include "interface/mmal/util/mmal_util.h"
 //#include "interface/mmal/util/mmal_util_params.h"
@@ -51,10 +50,33 @@
 
 #include <stdio.h>
 
+extern "C" {
+#include "interface/mmal/mmal.h"
 #include "types.h"
+}
 
-
-namespace flashcam {
+//namespace flashcam {
+    
+    typedef struct flashcam_params_s {
+        int rotation;                               // Camera rotation (degrees) : -270 / -180 / -90 / 0 / 90 / 180 / 270;
+        MMAL_PARAM_AWBMODE_T awb;                   // AWB mode. See: MMAL_PARAM_AWBMODE_T;
+        MMAL_PARAM_FLASH_T flash;                   // Flash mode. See: MMAL_PARAM_FLASH_T;
+        MMAL_PARAM_MIRROR_T mirror;                 // Image Mirroring. See: MMAL_PARAM_MIRROR_T;
+        MMAL_PARAM_EXPOSUREMODE_T exposure;         // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
+        MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
+        int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
+        MMAL_PARAMETER_DRC_STRENGTH_T strength;     // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T
+        int sharpness;                              // Image Sharpness : -100    to    100
+        int contrast;                               // Image Contrast  : -100    to    100
+        int brightness;                             // Image Brightness:    0    to    100
+        int saturation;                             // Image Saturation: -100    to    100
+        unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work)
+        unsigned int speed;                         // Shutterspeed    :    0    to 330000    (microseconds)
+        float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+        float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+        int denoise;                                // Image Denoiseing. On (1) or Off (0);
+    } FLASHCAM_PARAMS_T;
+    
     
     class FlashCam 
     {
@@ -79,6 +101,13 @@ namespace flashcam {
         //void loadSettings();
         
             
+        void setCamera(MMAL_COMPONENT_T *camera);
+        
+        
+        
+        
+        
+        
 /*** MMAL_PARAMS ARE FROM "mmal/mmal_parameters_camera.h" in Userland. ***/
         
         /* 0 */
@@ -327,7 +356,7 @@ namespace flashcam {
         //MMAL_PARAMETER_STEREOSCOPIC_MODE,         /**< Takes a @ref MMAL_PARAMETER_STEREOSCOPIC_MODE_T */
         // ---> not used/supported/directly controllable in this lib
     };
-}
+//}
 
 
 #endif /* FlashCam_h */

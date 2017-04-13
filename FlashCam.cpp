@@ -1,49 +1,17 @@
 #include "FlashCam.h"
 
+extern "C" {
 #include "interface/mmal/util/mmal_util_params.h"
-
+}
 
 #define FLASHCAMOUTPUT 1
 
-namespace flashcam {
+//namespace flashcam {
+
+    void FlashCam::setCamera(MMAL_COMPONENT_T *c) {
+        camera = c;
+    }
     
-    //FlashCam::loadSettings() {
-        /*
-        //Image properties
-        unsigned int getSharpness ( void );
-        unsigned int getContrast ( void );
-        unsigned int getBrightness ( void );
-        unsigned int getSaturation ( void );
-        unsigned int getISO ( void );
-        
-        unsigned int getStabilisation ( void );
-        unsigned int getExposureCompensation ( void );
-        unsigned int getQuality ( void );
-        MMAL_FOURCC_T getEncoding ( void );
-        
-        //Camera Modes
-        MMAL_PARAM_EXPOSUREMODE_T getExposureMode ( void );
-        MMAL_PARAM_EXPOSUREMETERINGMODE_T getMeteringMode ( void );
-        MMAL_PARAM_AWBMODE_T getAWBMode ( void );
-        MMAL_PARAM_FLASH_T getFlashMode ( void );
-        
-        //Camera Properties
-        unsigned int getRotation ( void );
-        unsigned int getFlipHorizontal ( void );
-        unsigned int getFlipVertical ( void );
-        FLASHCAM_PARAM_FLOAT_RECT_T getROI ( void );
-        unsigned int getShutterSpeed ( void );
-        
-        //Camera Gains
-        unsigned int getGainRed ( void );
-        unsigned int getGainBlue ( void );
-        MMAL_PARAMETER_DRC_STRENGTH_T getDRC ( void );
-        
-        //Effects
-        MMAL_PARAM_IMAGEFX_T getImageFX ( void );
-        MMAL_PARAM_COLOURFX_T getColourFX ( void );
-        */
-        
     
     /* GENERAL (PRIVATE) SETTER/GETTER */
     
@@ -264,8 +232,12 @@ namespace flashcam {
 
     int FlashCam::setAWBGains ( float red , float blue ) {
         if ( !camera ) return 1;
+        if (red  < 0.0) red  = 0.0;
+        if (red  > 8.0) red  = 8.0;
+        if (blue < 0.0) blue = 0.0;
+        if (blue > 8.0) blue = 8.0;
         //recompute gains
-        MMAL_RATIONAL_T r, b;
+        MMAL_RATIONAL_T r, b;        
         r.num = (unsigned int) (red  * 65536);
         b.num = (unsigned int) (blue * 65536);
         r.den = b.den = 65536;
@@ -299,4 +271,4 @@ namespace flashcam {
     }
     
     
-}
+//}

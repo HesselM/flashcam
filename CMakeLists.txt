@@ -4,6 +4,10 @@ project(flashcam)
 
 SET(COMPILE_DEFINITIONS -Werror)
 
+set(CMAKE_CXX_FLAGS " -fpermissive ${CMAKE_CXX_FLAGS}")
+set(CMAKE_C_FLAGS " -fpermissive ${CMAKE_C_FLAGS}")
+
+
 #include required packages
 find_package( Threads REQUIRED )
 find_package( PkgConfig REQUIRED )
@@ -26,7 +30,7 @@ include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # executables
-add_executable(flashcam RaspiStill.c RaspiCamControl.c FlashCam.cpp)
+add_executable(flashcam RaspiStill.cpp RaspiCamControl.c FlashCam.cpp types.c)
 
 
 # Libraries
@@ -34,3 +38,6 @@ target_link_libraries(flashcam ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(flashcam ${MMAL_LIBRARIES})
 target_link_libraries(flashcam ${BCMHOST_LIBRARIES})
 target_link_libraries(flashcam m)
+
+message("Used CXX flags: ${CMAKE_CXX_FLAGS}")
+message("Used C flags: ${CMAKE_C_FLAGS}")
