@@ -26,7 +26,7 @@ include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # executables
-add_executable(flashcam RaspiStill.c RaspiCamControl.c)
+add_executable(flashcam RaspiStill.c RaspiCamControl.c FlashCam.cpp)
 
 
 # Libraries
