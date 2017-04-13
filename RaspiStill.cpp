@@ -143,7 +143,7 @@ typedef struct
     int timestamp;                      /// Use timestamp instead of frame#
     int restart_interval;               /// JPEG restart interval. 0 for none.
     
-    RASPICAM_CAMERA_PARAMETERS camera_parameters; /// Camera setup parameters
+    FLASHCAM_PARAMS_T camera_parameters; /// Camera setup parameters
     
     MMAL_COMPONENT_T *camera_component;    /// Pointer to the camera component
     MMAL_COMPONENT_T *encoder_component;   /// Pointer to the encoder component
@@ -296,7 +296,7 @@ static void default_status(RASPISTILL_STATE *state)
     state->restart_interval = 0;
     
     // Set up the camera_parameters to default
-    raspicamcontrol_set_defaults(&state->camera_parameters);
+    //raspicamcontrol_set_defaults(&state->camera_parameters);
 }
 
 /**
@@ -481,6 +481,8 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
         vcos_semaphore_post(&(pData->complete_semaphore));
 }
 
+}
+
 /**
  * Create the camera component, set up its ports
  *
@@ -496,6 +498,9 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
     MMAL_PORT_T *preview_port = NULL, *video_port = NULL, *still_port = NULL;
     MMAL_STATUS_T status;
     MMAL_PARAMETER_INT32_T camera_num;
+    
+    FlashCam flashcam = FlashCam();
+    FLASHCAM_PARAMS_T camera_parameters_copy;
     
     /* Create the component */
     status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &camera);
@@ -594,7 +599,31 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
         mmal_port_parameter_set(camera->control, &cam_config.hdr);
     }
     
-    raspicamcontrol_set_all_parameters(camera, &state->camera_parameters);
+    
+    flashcam.setCamera(camera);
+    
+    state->camera_parameters.flash          = MMAL_PARAM_FLASH_ON;
+    state->camera_parameters.exposure       = MMAL_PARAM_EXPOSUREMODE_AUTO;
+    state->camera_parameters.metering       = MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE;
+    state->camera_parameters.awb            = MMAL_PARAM_AWBMODE_AUTO;
+    state->camera_parameters.strength       = MMAL_PARAMETER_DRC_STRENGTH_OFF;
+    state->camera_parameters.speed          = 0;
+    state->camera_parameters.brightness     = 50;
+
+    /*
+    if ( flashcam.setAllParams(&state->camera_parameters) != 0) {
+        vcos_log_error("Error setting camera params");
+    } else {
+        flashcam.printParams(&state->camera_parameters);
+    }
+    */
+    
+    if ( flashcam.getAllParams(&camera_parameters_copy) != 0) {
+        vcos_log_error("Error getting camera params");
+    } else {
+        flashcam.printParams(&camera_parameters_copy);
+    }
+    
     
     // Now set up the port formats
     
@@ -602,13 +631,13 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
     format->encoding = MMAL_ENCODING_OPAQUE;
     format->encoding_variant = MMAL_ENCODING_I420;
     
-    if(state->camera_parameters.shutter_speed > 6000000)
+    if(state->camera_parameters.speed > 6000000)
     {
         MMAL_PARAMETER_FPS_RANGE_T fps_range = {{MMAL_PARAMETER_FPS_RANGE, sizeof(fps_range)},
             { 50, 1000 }, {166, 1000}};
         mmal_port_parameter_set(preview_port, &fps_range.hdr);
     }
-    else if(state->camera_parameters.shutter_speed > 1000000)
+    else if(state->camera_parameters.speed > 1000000)
     {
         MMAL_PARAMETER_FPS_RANGE_T fps_range = {{MMAL_PARAMETER_FPS_RANGE, sizeof(fps_range)},
             { 166, 1000 }, {999, 1000}};
@@ -665,13 +694,13 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
     
     format = still_port->format;
     
-    if(state->camera_parameters.shutter_speed > 6000000)
+    if(state->camera_parameters.speed > 6000000)
     {
         MMAL_PARAMETER_FPS_RANGE_T fps_range = {{MMAL_PARAMETER_FPS_RANGE, sizeof(fps_range)},
             { 50, 1000 }, {166, 1000}};
         mmal_port_parameter_set(still_port, &fps_range.hdr);
     }
-    else if(state->camera_parameters.shutter_speed > 1000000)
+    else if(state->camera_parameters.speed > 1000000)
     {
         MMAL_PARAMETER_FPS_RANGE_T fps_range = {{MMAL_PARAMETER_FPS_RANGE, sizeof(fps_range)},
             { 167, 1000 }, {999, 1000}};
@@ -724,6 +753,8 @@ error:
     
     return status;
 }
+
+extern "C" {
 
 /**
  * Destroy the camera component
@@ -1151,7 +1182,7 @@ int old_main()
                     
                     
                     // There is a possibility that shutter needs to be set each loop.
-                    if (mmal_status_to_int(mmal_port_parameter_set_uint32(state.camera_component->control, MMAL_PARAMETER_SHUTTER_SPEED, state.camera_parameters.shutter_speed)) != MMAL_SUCCESS)
+                    if (mmal_status_to_int(mmal_port_parameter_set_uint32(state.camera_component->control, MMAL_PARAMETER_SHUTTER_SPEED, state.camera_parameters.speed)) != MMAL_SUCCESS)
                         vcos_log_error("Unable to set shutter speed");
                     
                     // Enable the encoder output port
@@ -1267,8 +1298,8 @@ int old_main()
             fprintf(stderr, "Close down completed, all components disconnected, disabled and destroyed\n\n");
     }
     
-    if (status != MMAL_SUCCESS)
-        raspicamcontrol_check_configuration(128);
+    //if (status != MMAL_SUCCESS)
+    //    raspicamcontrol_check_configuration(128);
     
     return exit_code;
 }

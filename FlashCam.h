@@ -102,8 +102,22 @@ extern "C" {
         
             
         void setCamera(MMAL_COMPONENT_T *camera);
+        int setAllParams(FLASHCAM_PARAMS_T *params);
+        int getAllParams(FLASHCAM_PARAMS_T *params);
+        void printParams(FLASHCAM_PARAMS_T *params);
         
+        /*
         
+    TODO:
+        -   params->imageEffect = MMAL_PARAM_IMAGEFX_NONE;
+        -    params->exposureCompensation = 0;
+        -    params->imageEffect = MMAL_PARAM_IMAGEFX_NONE;
+        -    params->colourEffects.enable = 0;
+        -   params->colourEffects.u = 128;
+       -  params->colourEffects.v = 128;
+        -    params->stats_pass = MMAL_FALSE;
+
+        */
         
         
         

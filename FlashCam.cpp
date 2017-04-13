@@ -6,13 +6,127 @@ extern "C" {
 
 #define FLASHCAMOUTPUT 1
 
+#define DEBUG 1
+
 //namespace flashcam {
+
+/**Constructor
+ */
+FlashCam::FlashCam(){
+
+}
+/**Destructor
+ */
+FlashCam::~FlashCam(){
+    
+}
 
     void FlashCam::setCamera(MMAL_COMPONENT_T *c) {
         camera = c;
     }
     
     
+    int FlashCam::setAllParams(FLASHCAM_PARAMS_T *params) {
+        int status = 0;
+        
+        vcos_log_error("Setting:Rotation");        
+        status += setRotation(params->rotation);        
+        vcos_log_error("Setting:AWB");
+        status += setAWBMode(params->awb);
+        vcos_log_error("Setting:Flash");
+        status += setFlashMode(params->flash);
+        vcos_log_error("Setting:Mirror");
+        status += setMirror(params->mirror);
+        vcos_log_error("Setting:Exposure");
+        status += setExposureMode(params->exposure);
+        vcos_log_error("Setting:Metering");
+        status += setMeteringMode(params->metering);
+        vcos_log_error("Setting:Stabilisation");
+        status += setStabilisation(params->stabilisation);
+        vcos_log_error("Setting:DRC");
+        status += setDRC(params->strength);
+        vcos_log_error("Setting:Sharpness");
+        status += setSharpness(params->sharpness);
+        vcos_log_error("Setting:Contrast");
+        status += setContrast(params->contrast);
+        vcos_log_error("Setting:Brightness");
+        status += setBrightness(params->brightness);
+        vcos_log_error("Setting:Saturation");
+        status += setSaturation(params->saturation);
+        vcos_log_error("Setting:ISO");
+        status += setISO(params->iso);
+        vcos_log_error("Setting:Shutterspeed");
+        status += setShutterSpeed(params->speed);
+        vcos_log_error("Setting:getAWBGains");
+        status += setAWBGains(params->awbgain_red, params->awbgain_blue);
+        vcos_log_error("Setting:Denoise");
+        status += setDenoise(params->denoise);
+        
+        return status;
+    }
+                   
+    int FlashCam::getAllParams(FLASHCAM_PARAMS_T *params) {
+        int status = 0;
+
+        vcos_log_error("Getting:Rotation");
+        status += getRotation( &(params->rotation) );
+        vcos_log_error("Getting:AWB");
+        status += getAWBMode( &(params->awb) );
+        vcos_log_error("Getting:Flash");
+        status += getFlashMode( &(params->flash) );
+        vcos_log_error("Getting:Mirror");
+        status += getMirror( &(params->mirror) );
+        vcos_log_error("Getting:Exposure");
+        status += getExposureMode( &(params->exposure) );
+        vcos_log_error("Getting:Metering");
+        status += getMeteringMode( &(params->metering) );
+        vcos_log_error("Getting:Stabilisation");
+        status += getStabilisation( &(params->stabilisation) );
+        vcos_log_error("Getting:DRC");
+        status += getDRC( &(params->strength) );
+        vcos_log_error("Getting:Sharpness");
+        status += getSharpness( &(params->sharpness) );
+        vcos_log_error("Getting:Contrast");
+        status += getContrast( &(params->contrast) );
+        vcos_log_error("Getting:Brightness");
+        status += getBrightness( &(params->brightness) );
+        vcos_log_error("Getting:Saturation");
+        status += getSaturation( &(params->saturation) );
+        vcos_log_error("Getting:ISO");
+        status += getISO( &(params->iso) );
+        vcos_log_error("Getting:Shutterspeed");
+        status += getShutterSpeed( &(params->speed) );
+        vcos_log_error("Getting:getAWBGains");
+        status += getAWBGains( &(params->awbgain_red),  &(params->awbgain_blue) );
+        vcos_log_error("Getting:Denoise");
+        status += getDenoise( &(params->denoise) );
+        
+        return status;
+    }
+
+    void FlashCam::printParams(FLASHCAM_PARAMS_T *params) {
+        fprintf(stderr, "Rotation     : %d\n", params->rotation);
+        fprintf(stderr, "AWB          : %d\n", params->awb);
+        fprintf(stderr, "Flash        : %d\n", params->flash);
+        fprintf(stderr, "Mirror       : %d\n", params->mirror);
+        fprintf(stderr, "Exposure     : %d\n", params->exposure);
+        fprintf(stderr, "Metering     : %d\n", params->metering);
+        fprintf(stderr, "Stabilisation: %d\n", params->stabilisation);
+        fprintf(stderr, "DRC          : %d\n", params->strength);
+        fprintf(stderr, "Sharpness    : %d\n", params->sharpness);
+        fprintf(stderr, "Contrast     : %d\n", params->contrast);
+        fprintf(stderr, "Brightness   : %d\n", params->brightness);
+        fprintf(stderr, "Saturation   : %d\n", params->saturation);
+        fprintf(stderr, "ISO          : %d\n", params->iso);
+        fprintf(stderr, "Shutterspeed : %d\n", params->speed);
+        fprintf(stderr, "AWB-red      : %d\n", params->awbgain_red);
+        fprintf(stderr, "AWB-blue     : %d\n", params->awbgain_blue);
+        fprintf(stderr, "Denoise      : %d\n", params->denoise);
+    }
+
+
+
+
     /* GENERAL (PRIVATE) SETTER/GETTER */
     
     int FlashCam::setParameterRational( int id, int val ) {
@@ -249,9 +363,13 @@ extern "C" {
     
     int FlashCam::getAWBGains ( float *red , float *blue ) { 
         if (!camera) return 1;
+        //recompute gains
+        MMAL_RATIONAL_T r, b;        
+        r.num = b.num = 0;
+        r.den = b.den = 65536;
         // {0,0}, {0,0}: just usa a value to allocate `param`
-        MMAL_PARAMETER_AWB_GAINS_T param  = {{MMAL_PARAMETER_CUSTOM_AWB_GAINS, sizeof(param)}, {0,0}, {0,0}};
-        MMAL_STATUS_T              status = mmal_port_parameter_get(camera->control, &param.hdr);  
+        MMAL_PARAMETER_AWB_GAINS_T param  = {{MMAL_PARAMETER_CUSTOM_AWB_GAINS,sizeof(param)}, r, b};
+        MMAL_STATUS_T              status = mmal_port_parameter_set(camera->control, &param.hdr);  
         //update value
         *red  = ((float)param.r_gain.num) / ((float)param.r_gain.den) ;
         *blue = ((float)param.b_gain.num) / ((float)param.b_gain.den) ;
