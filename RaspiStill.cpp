@@ -77,7 +77,7 @@ extern "C" {
 #include "interface/mmal/util/mmal_connection.h"
 #include "interface/mmal/mmal_parameters_camera.h"
 
-#include "RaspiCamControl.h"
+//#include "RaspiCamControl.h"
 
 #include <semaphore.h>
 
@@ -123,7 +123,6 @@ typedef struct
     char *filename;                     /// filename of output file
     char *linkname;                     /// filename of output file
     int frameStart;                     /// First number of frame output counter
-    MMAL_PARAM_THUMBNAIL_CONFIG_T thumbnailConfig;
     int verbose;                        /// !0 if want detailed run information
     int demoMode;                       /// Run app in demo mode
     int demoInterval;                   /// Interval between camera settings changes
@@ -273,10 +272,6 @@ static void default_status(RASPISTILL_STATE *state)
     state->linkname = NULL;
     state->frameStart = 0;
     state->verbose = 0;
-    state->thumbnailConfig.enable = 1;
-    state->thumbnailConfig.width = 64;
-    state->thumbnailConfig.height = 48;
-    state->thumbnailConfig.quality = 35;
     state->demoMode = 0;
     state->demoInterval = 250; // ms
     state->camera_component = NULL;
@@ -323,9 +318,6 @@ static void dump_status(RASPISTILL_STATE *state)
             state->height, state->quality, state->filename);
     fprintf(stderr, "Time delay %d, Raw %s\n", state->timeout,
             state->wantRAW ? "yes" : "no");
-    fprintf(stderr, "Thumbnail enabled %s, width %d, height %d, quality %d\n",
-            state->thumbnailConfig.enable ? "Yes":"No", state->thumbnailConfig.width,
-            state->thumbnailConfig.height, state->thumbnailConfig.quality);
     fprintf(stderr, "Link to latest frame enabled ");
     if (state->linkname)
     {
@@ -822,23 +814,7 @@ static MMAL_STATUS_T create_encoder_component(RASPISTILL_STATE *state)
         vcos_log_error("Unable to set JPEG restart interval");
         goto error;
     }
-    
-    // Set up any required thumbnail
-    {
-        MMAL_PARAMETER_THUMBNAIL_CONFIG_T param_thumb = {{MMAL_PARAMETER_THUMBNAIL_CONFIGURATION, sizeof(MMAL_PARAMETER_THUMBNAIL_CONFIG_T)}, 0, 0, 0, 0};
         
-        if ( state->thumbnailConfig.enable &&
-            state->thumbnailConfig.width > 0 && state->thumbnailConfig.height > 0 )
-        {
-            // Have a valid thumbnail defined
-            param_thumb.enable = 1;
-            param_thumb.width = state->thumbnailConfig.width;
-            param_thumb.height = state->thumbnailConfig.height;
-            param_thumb.quality = state->thumbnailConfig.quality;
-        }
-        status = mmal_port_parameter_set(encoder->control, &param_thumb.hdr);
-    }
-    
     //  Enable component
     status = mmal_component_enable(encoder);
     
