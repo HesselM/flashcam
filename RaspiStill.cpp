@@ -602,21 +602,20 @@ static MMAL_STATUS_T create_camera_component(RASPISTILL_STATE *state)
     
     flashcam.setCamera(camera);
     
-    state->camera_parameters.flash          = MMAL_PARAM_FLASH_ON;
-    state->camera_parameters.exposure       = MMAL_PARAM_EXPOSUREMODE_AUTO;
-    state->camera_parameters.metering       = MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE;
     state->camera_parameters.awb            = MMAL_PARAM_AWBMODE_AUTO;
-    state->camera_parameters.strength       = MMAL_PARAMETER_DRC_STRENGTH_OFF;
-    state->camera_parameters.speed          = 0;
+    state->camera_parameters.exposure       = MMAL_PARAM_EXPOSUREMODE_AUTO;
+    state->camera_parameters.flash          = MMAL_PARAM_FLASH_OFF;
     state->camera_parameters.brightness     = 50;
+    state->camera_parameters.denoise        = 1;
 
-    /*
+    //state->camera_parameters.flash        = MMAL_PARAM_FLASH_ON;
+    
     if ( flashcam.setAllParams(&state->camera_parameters) != 0) {
         vcos_log_error("Error setting camera params");
     } else {
         flashcam.printParams(&state->camera_parameters);
     }
-    */
+    
     
     if ( flashcam.getAllParams(&camera_parameters_copy) != 0) {
         vcos_log_error("Error getting camera params");
