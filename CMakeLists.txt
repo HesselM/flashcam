@@ -4,8 +4,8 @@ project(flashcam)
 
 SET(COMPILE_DEFINITIONS -Werror)
 
-set(CMAKE_CXX_FLAGS " -fpermissive ${CMAKE_CXX_FLAGS}")
-set(CMAKE_C_FLAGS " -fpermissive ${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS " -fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
+set(CMAKE_C_FLAGS " -fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
 
 
 #include required packages

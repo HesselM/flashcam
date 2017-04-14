@@ -50,10 +50,7 @@
 
 #include <stdio.h>
 
-extern "C" {
 #include "interface/mmal/mmal.h"
-#include "types.h"
-}
 
 //namespace flashcam {
     

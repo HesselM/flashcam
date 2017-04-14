@@ -1,8 +1,10 @@
 #include "FlashCam.h"
 
 extern "C" {
-#include "interface/mmal/util/mmal_util_params.h"
+#include "types.h"
 }
+
+#include "interface/mmal/util/mmal_util_params.h"
 
 
 // Capture port..
