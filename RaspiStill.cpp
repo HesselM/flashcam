@@ -81,8 +81,8 @@ extern "C" {
 #include <semaphore.h>
 
 // Standard port setting for the camera component
-//#define MMAL_CAMERA_PREVIEW_PORT 0
-//#define MMAL_CAMERA_VIDEO_PORT 1
+#define MMAL_CAMERA_PREVIEW_PORT 0
+#define MMAL_CAMERA_VIDEO_PORT 1
 #define MMAL_CAMERA_CAPTURE_PORT 2
 
 // Stills format information
@@ -93,47 +93,31 @@ extern "C" {
 /// Video render needs at least 2 buffers.
 #define VIDEO_OUTPUT_BUFFERS_NUM 3
 
-/// Frame advance method
-#define FRAME_NEXT_SINGLE        0
-#define FRAME_NEXT_TIMELAPSE     1
-#define FRAME_NEXT_KEYPRESS      2
-#define FRAME_NEXT_FOREVER       3
-#define FRAME_NEXT_GPIO          4
-#define FRAME_NEXT_SIGNAL        5
-#define FRAME_NEXT_IMMEDIATELY   6
-
+static void signal_handler(int signal_number);
 
 /** Structure containing all state information for the current run
  */
 typedef struct
 {
-    int timeout;                        /// Time taken before frame is grabbed and app then shuts down. Units are milliseconds
+    char camera_name[MMAL_PARAMETER_CAMERA_INFO_MAX_STR_LEN]; // Name of the camera sensor
+    
     unsigned int width;                          /// Requested width of image
     unsigned int height;                         /// requested height of image
-    char camera_name[MMAL_PARAMETER_CAMERA_INFO_MAX_STR_LEN]; // Name of the camera sensor
     int quality;                        /// JPEG quality setting (1-100)
     int wantRAW;                        /// Flag for whether the JPEG metadata also contains the RAW bayer image
     char *filename;                     /// filename of output file
-    char *linkname;                     /// filename of output file
-    int frameStart;                     /// First number of frame output counter
     int verbose;                        /// !0 if want detailed run information
-    int demoMode;                       /// Run app in demo mode
-    int demoInterval;                   /// Interval between camera settings changes
     MMAL_FOURCC_T encoding;             /// Encoding to use for the output file.
-    int timelapse;                      /// Delay between each picture in timelapse mode. If 0, disable timelapse
-    int frameNextMethod;                /// Which method to use to advance to next frame
-    int glCapture;                      /// Save the GL frame-buffer instead of camera output
     int settings;                       /// Request settings from the camera
     int cameraNum;                      /// Camera number
-    int burstCaptureMode;               /// Enable burst mode
     int sensor_mode;                     /// Sensor mode. 0=auto. Check docs/forum for modes selected by other values.
-    int datetime;                       /// Use DateTime instead of frame#
-    int timestamp;                      /// Use timestamp instead of frame#
     int restart_interval;               /// JPEG restart interval. 0 for none.
     
     FLASHCAM_PARAMS_T camera_parameters; /// Camera setup parameters
     
     MMAL_COMPONENT_T *camera_component;    /// Pointer to the camera component
+    MMAL_COMPONENT_T *null_sink_component;    /// Pointer to the camera component
+
     MMAL_COMPONENT_T *encoder_component;   /// Pointer to the encoder component
     MMAL_CONNECTION_T *encoder_connection; /// Pointer to the connection from camera to encoder
     
@@ -224,30 +208,23 @@ static void default_status(RASPISTILL_STATE *state)
         return;
     }
     
-    state->timeout = 1000; // 5s delay before take image
     state->quality = 85;
     state->wantRAW = 0;
     state->filename = NULL;
-    state->linkname = NULL;
-    state->frameStart = 0;
     state->verbose = 1;
-    state->demoMode = 0;
-    state->demoInterval = 250; // ms
+    state->encoding = MMAL_ENCODING_JPEG;
+    state->settings = 1;
+    state->cameraNum = 0;
+    state->sensor_mode = 0;
+    state->restart_interval = 0;
+
+    
     state->camera_component = NULL;
     state->encoder_component = NULL;
     state->encoder_connection = NULL;
     state->encoder_pool = NULL;
-    state->encoding = MMAL_ENCODING_JPEG;
-    state->timelapse = 0;
-    state->frameNextMethod = FRAME_NEXT_SINGLE;
-    state->glCapture = 0;
-    state->settings = 0;
-    state->cameraNum = 0;
-    state->burstCaptureMode=0;
-    state->sensor_mode = 0;
-    state->datetime = 0;
-    state->timestamp = 0;
-    state->restart_interval = 0;
+
+    
     
     // Set up the camera_parameters to default
     //raspicamcontrol_set_defaults(&state->camera_parameters);
@@ -270,17 +247,7 @@ static void dump_status(RASPISTILL_STATE *state)
     
     fprintf(stderr, "Width %d, Height %d, quality %d, filename %s\n", state->width,
             state->height, state->quality, state->filename);
-    fprintf(stderr, "Time delay %d, Raw %s\n", state->timeout,
-            state->wantRAW ? "yes" : "no");
-    fprintf(stderr, "Link to latest frame enabled ");
-    if (state->linkname)
-    {
-        fprintf(stderr, " yes, -> %s\n", state->linkname);
-    }
-    else
-    {
-        fprintf(stderr, " no\n");
-    }
+    fprintf(stderr, "Raw %s\n", state->wantRAW ? "yes" : "no");
     
     fprintf(stderr, "\n\n");
     
@@ -349,7 +316,12 @@ static void camera_control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
                                );
             }
                 break;
-        }
+                
+            default:
+                vcos_log_error("Received: %u", param->hdr.id);
+                break;
+            }
+        
     }
     else if (buffer->cmd == MMAL_EVENT_ERROR)
     {
@@ -825,18 +797,60 @@ static void check_disable_port(MMAL_PORT_T *port)
 }
 
 
+
+static int setPreviewNullSink( MMAL_COMPONENT_T *preview ) {
+    MMAL_COMPONENT_T *p = 0;
+    MMAL_PORT_T *preview_port = NULL;
+    MMAL_STATUS_T status;
+
+    //set nullsink
+    status = mmal_component_create("vc.null_sink", &p);
+    if (status != MMAL_SUCCESS) {
+        vcos_log_error("Unable to create null sink component");
+        goto error;
+    }
+
+    // Enable component
+    status = mmal_component_enable(p);
+    if (status != MMAL_SUCCESS) {
+        vcos_log_error("Unable to enable preview/null sink component (%u)", status);
+        goto error;
+    }
+    
+    //copy preview
+    preview = p;
+    
+    return status;
+    
+error:
+    
+    if (*preview)
+        mmal_component_destroy(*preview);
+    
+    return status;    
+}
+
+void destroyPreview( MMAL_COMPONENT_T *preview )
+{
+    if (*preview)
+    {
+        mmal_component_destroy(*preview);
+        *preview = NULL;
+    }
+}
+
 /**
  * main
  */
-int old_main()
+int main(int argc, const char **argv)
 {
     // Our main data storage vessel..
     RASPISTILL_STATE state = {0};
     int exit_code = EX_OK;
     
     MMAL_STATUS_T status = MMAL_SUCCESS;
-    MMAL_PORT_T *camera_still_port = NULL;
-    MMAL_PORT_T *encoder_input_port = NULL;
+    MMAL_PORT_T *camera_still_port    = NULL;
+    MMAL_PORT_T *encoder_input_port  = NULL;
     MMAL_PORT_T *encoder_output_port = NULL;
     
     bcm_host_init();
@@ -846,6 +860,7 @@ int old_main()
     
     default_status(&state);
     
+    //set filename for output
     std::string jpg = "test.jpg";
     state.filename = new char[jpg.length() + 1];
     strcpy(state.filename, jpg.c_str());        
@@ -869,6 +884,14 @@ int old_main()
     // We have three components. Camera, Preview and encoder.
     // Camera and encoder are different in stills/video, but preview
     // is the same so handed off to a separate module
+    
+    
+    // Note we are lucky that the preview and null sink components use the same input port
+    // so we can simple do this without conditionals
+    preview_input_port  = state.preview_parameters.preview_component->input[0];    
+    status = connect_ports(camera_preview_port, preview_input_port, &state.preview_connection);
+    
+    
     
     if ((status = create_camera_component(&state)) != MMAL_SUCCESS)
     {
@@ -969,12 +992,7 @@ int old_main()
                     if (mmal_port_send_buffer(encoder_output_port, buffer)!= MMAL_SUCCESS)
                         vcos_log_error("Unable to send a buffer to encoder output port (%d)", q);
                 }
-                /*
-                 if (state.burstCaptureMode && frame==1)
-                 {
-                 mmal_port_parameter_set_boolean(state.camera_component->control,  MMAL_PARAMETER_CAMERA_BURST_CAPTURE, 1);
-                 }
-                 */
+
                 
                 if (state.verbose)
                     fprintf(stderr, "Starting capture %d\n", frame);
@@ -1021,36 +1039,36 @@ int old_main()
             fprintf(stderr, "Closing down\n");
         
         // Disable all our ports that are not handled by connections
+        fprintf(stderr, "check_disable_port\n");
         check_disable_port(encoder_output_port);
         
-        if (state.encoder_connection)
+        if (state.encoder_connection) {
+            fprintf(stderr, "mmal_connection_destroy\n");
             mmal_connection_destroy(state.encoder_connection);
-        
+        }
         
         /* Disable components */
-        if (state.encoder_component)
+        if (state.encoder_component) {
+            fprintf(stderr, "mmal_component_disable:encoder\n");
             mmal_component_disable(state.encoder_component);
+        }
         
-        if (state.camera_component)
+        if (state.camera_component) {
+            fprintf(stderr, "mmal_component_disable:camera\n");
             mmal_component_disable(state.camera_component);
+        }
         
+        fprintf(stderr, "destroy_encoder_component\n");        
         destroy_encoder_component(&state);
+        fprintf(stderr, "destroy_camera_component\n");        
         destroy_camera_component(&state);
         
         if (state.verbose)
             fprintf(stderr, "Close down completed, all components disconnected, disabled and destroyed\n\n");
     }
     
-    
-    fprintf(stderr, "GPU: %d\n", get_mem_gpu());
+    fprintf(stderr, "GPU: %d\n", get_mem_gpu());    
 
-    
-    
     return exit_code;
-}
-
-
-int main(int argc, const char **argv) {
-    return old_main();
 }
 
