@@ -93,17 +93,33 @@
         /**Destructor
          */
         ~FlashCam();
-        
-        //void commitSettings();
-        //void loadSettings();
-        
-            
+                    
         void setCamera(MMAL_COMPONENT_T *camera);
         
         static void getDefaultParams(FLASHCAM_PARAMS_T *params);
         static void printParams(FLASHCAM_PARAMS_T *params);
         int  setAllParams(FLASHCAM_PARAMS_T *params);
         int  getAllParams(FLASHCAM_PARAMS_T *params);
+        
+        
+        /*
+        struct RASPISTILLYUV_STATE;
+        struct PORT_USERDATA;
+        
+        static void default_status(RASPISTILLYUV_STATE *state);
+        static void dump_status(RASPISTILLYUV_STATE *state);
+        
+        static void camera_control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer);
+        static void camera_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer);
+        
+        static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
+        static void destroy_camera_component(RASPISTILLYUV_STATE *state)
+        static MMAL_STATUS_T connect_ports(MMAL_PORT_T *output_port, MMAL_PORT_T *input_port, MMAL_CONNECTION_T **connection)
+        static void check_disable_port(MMAL_PORT_T *port)
+        static void signal_handler(int signal_number)
+        static MMAL_STATUS_T create_preview_component( RASPISTILLYUV_STATE *state ) {
+            void destroy_preview_component(RASPISTILLYUV_STATE *state)
+*/
         
         /*
         

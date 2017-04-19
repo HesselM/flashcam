@@ -56,6 +56,9 @@ extern "C" {
 #include "FlashCam.h"
 #include <string>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -110,12 +113,13 @@ typedef struct
     int settings;                           // Request settings from the camera
     int cameraNum;                          // Camera number
     int onlyLuma;                           // Only output the luma / Y plane of the YUV data
+    cv::Mat cvimage;
     
     FLASHCAM_PARAMS_T  camera_parameters;   // Camera setup parameters
     
     MMAL_COMPONENT_T *camera_component;     // Pointer to the camera component
     MMAL_COMPONENT_T *preview_component;   /// Pointer to the preview component
-
+    
     MMAL_CONNECTION_T *preview_connection;  // Pointer to the connection from camera to preview
     MMAL_POOL_T *camera_pool;               // Pointer to the pool of buffers used by camera stills port
 } RASPISTILLYUV_STATE;
@@ -243,9 +247,32 @@ static void camera_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buff
         int bytes_written = 0;
         int bytes_to_write = buffer->length;
         
+        //only write Y (luma)
         if (pData->pstate->onlyLuma)
             bytes_to_write = vcos_min(buffer->length, port->format->es->video.width * port->format->es->video.height);
         
+        if (bytes_to_write) {
+            //fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, pData->pstate->height, pData->pstate->width);
+            fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, port->format->es->video.height, port->format->es->video.width);
+
+            unsigned char *img = pData->pstate->cvimage.ptr<uchar> ( 0 );
+            
+            memcpy ( img, buffer->data, bytes_to_write );
+            bytes_written = bytes_to_write;
+            
+            fprintf(stderr, "Done...\n");
+        }
+        
+        //bytes_written = fwrite(buffer->data, 1, bytes_to_write, pData->file_handle);
+
+        
+        //cv::imshow ("cvwindow", image);
+        //cv::waitKey(1);
+
+        
+        
+        //write to file
+        /*
         if (bytes_to_write && pData->file_handle)
         {
             mmal_buffer_header_mem_lock(buffer);
@@ -254,6 +281,8 @@ static void camera_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buff
             
             mmal_buffer_header_mem_unlock(buffer);
         }
+         */
+
         
         // We need to check we wrote what we wanted - it's possible we have run out of storage.
         if (buffer->length && bytes_written != bytes_to_write)
@@ -262,6 +291,8 @@ static void camera_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buff
             complete = 1;
         }
         
+
+
         // Check end of frame or error
         if (buffer->flags & (MMAL_BUFFER_HEADER_FLAG_FRAME_END | MMAL_BUFFER_HEADER_FLAG_TRANSMISSION_FAILED))
             complete = 1;
@@ -392,7 +423,7 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
     
     //raspicamcontrol_set_all_parameters(camera, &state->camera_parameters);
     flashcam.setCamera(camera);
-
+    
     flashcam.setFlashMode(MMAL_PARAM_FLASH_ON);
     
     //get params
@@ -404,6 +435,9 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
     
     
     // Now set up the port formats
+    state->width  = VCOS_ALIGN_UP(state->width, 32);
+    state->height = VCOS_ALIGN_UP(state->height, 16);
+    
     
     format = preview_port->format;
     
@@ -422,8 +456,8 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
     
     // In this mode we are forcing the preview to be generated from the full capture resolution.
     // This runs at a max of 15fps with the OV5647 sensor.
-    format->es->video.width = VCOS_ALIGN_UP(state->width, 32);
-    format->es->video.height = VCOS_ALIGN_UP(state->height, 16);
+    format->es->video.width = state->width;
+    format->es->video.height = state->height;
     format->es->video.crop.x = 0;
     format->es->video.crop.y = 0;
     format->es->video.crop.width = state->width;
@@ -460,8 +494,8 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
         format->encoding_variant = MMAL_ENCODING_I420;
     }
     
-    format->es->video.width = VCOS_ALIGN_UP(state->width, 32);
-    format->es->video.height = VCOS_ALIGN_UP(state->height, 16);
+    format->es->video.width = state->width;
+    format->es->video.height = state->height;
     format->es->video.crop.x = 0;
     format->es->video.crop.y = 0;
     format->es->video.crop.width = state->width;
@@ -481,6 +515,14 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
         vcos_log_error("camera still format couldn't be set");
         goto error;
     }
+    
+    // setup opencv image
+    if (state->onlyLuma) {
+        state->cvimage.create ( format->es->video.height * 1.0, format->es->video.width, CV_8UC1 );
+    } else {
+        state->cvimage.create ( format->es->video.height * 1.5, format->es->video.width, CV_8UC1 );
+    }
+    
     
     /* Enable component */
     status = mmal_component_enable(camera);
@@ -778,18 +820,25 @@ int main(int argc, const char **argv)
                 if (state.verbose)
                     fprintf(stderr, "Starting capture %s\n", state.filename);
                 
+                //create capture window
+                cv::namedWindow( "cvwindow", cv::WINDOW_AUTOSIZE );
+                                
                 if (mmal_port_parameter_set_boolean(camera_still_port, MMAL_PARAMETER_CAPTURE, 1) != MMAL_SUCCESS)
                 {
                     vcos_log_error("%s: Failed to start capture", __func__);
                 }
                 else
                 {
+                    
                     // Wait for capture to complete
                     // For some reason using vcos_semaphore_wait_timeout sometimes returns immediately with bad parameter error
                     // even though it appears to be all correct, so reverting to untimed one until figure out why its erratic
                     vcos_semaphore_wait(&callback_data.complete_semaphore);
                     if (state.verbose)
                         fprintf(stderr, "Finished capture %s\n", state.filename);
+                    
+                    cv::imshow ("cvwindow", state.cvimage);
+                    cv::waitKey(0);
                 }
                 
                 // Ensure we don't die if get callback with no open file

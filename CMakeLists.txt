@@ -11,6 +11,9 @@ set(CMAKE_C_FLAGS " -fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
 #include required packages
 find_package( Threads REQUIRED )
 find_package( PkgConfig REQUIRED )
+find_package( OpenCV REQUIRED )
+
+include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 # MMAL
 pkg_search_module(MMAL REQUIRED mmal)
@@ -35,6 +38,7 @@ add_executable(flashcamyuv RaspiStillYUV.cpp FlashCam.cpp types.c)
 
 # Libraries
 target_link_libraries(flashcamyuv ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(flashcamyuv ${OpenCV_LIBS} )
 target_link_libraries(flashcamyuv ${MMAL_LIBRARIES})
 target_link_libraries(flashcamyuv ${BCMHOST_LIBRARIES})
 target_link_libraries(flashcamyuv m)
