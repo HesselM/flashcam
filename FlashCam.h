@@ -100,10 +100,10 @@
             
         void setCamera(MMAL_COMPONENT_T *camera);
         
-        void getDefaultParams(FLASHCAM_PARAMS_T *params);
+        static void getDefaultParams(FLASHCAM_PARAMS_T *params);
+        static void printParams(FLASHCAM_PARAMS_T *params);
         int  setAllParams(FLASHCAM_PARAMS_T *params);
         int  getAllParams(FLASHCAM_PARAMS_T *params);
-        void printParams(FLASHCAM_PARAMS_T *params);
         
         /*
         

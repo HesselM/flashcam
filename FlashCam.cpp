@@ -108,7 +108,7 @@ FlashCam::~FlashCam(){
         return status;
     }
 
-    void FlashCam::printParams(FLASHCAM_PARAMS_T *params) {
+     void FlashCam::printParams(FLASHCAM_PARAMS_T *params) {
         fprintf(stderr, "Rotation     : %d\n", params->rotation);
         fprintf(stderr, "AWB          : %d\n", params->awb);
         fprintf(stderr, "Flash        : %d\n", params->flash);
@@ -128,7 +128,25 @@ FlashCam::~FlashCam(){
         fprintf(stderr, "Denoise      : %d\n", params->denoise);
     }
 
-
+ void FlashCam::getDefaultParams(FLASHCAM_PARAMS_T *params) {
+    params->rotation        = 0;
+    params->awb             = MMAL_PARAM_AWBMODE_AUTO;
+    params->flash           = MMAL_PARAM_FLASH_OFF;
+    params->mirror          = MMAL_PARAM_MIRROR_NONE;
+    params->exposure        = MMAL_PARAM_EXPOSUREMODE_AUTO;
+    params->metering        = MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE;
+    params->stabilisation   = 0;
+    params->strength        = MMAL_PARAMETER_DRC_STRENGTH_OFF;
+    params->sharpness       = 0;
+    params->contrast        = 0;
+    params->brightness      = 50;
+    params->saturation      = 0;
+    params->iso             = 0;
+    params->speed           = 0;
+    params->awbgain_red     = 0;
+    params->awbgain_blue    = 0;
+    params->denoise         = 0;
+}
 
 
     /* GENERAL (PRIVATE) SETTER/GETTER */
