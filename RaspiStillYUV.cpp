@@ -77,11 +77,6 @@ extern "C" {
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
 
-
-//#include "RaspiCamControl.h"
-//#include "RaspiPreview.h"
-//#include "RaspiCLI.h"
-
 #include <semaphore.h>
 
 // Standard port setting for the camera component
@@ -102,14 +97,6 @@ extern "C" {
 
 static void signal_handler(int signal_number);
 
-typedef struct
-{
-    int opacity;                           /// Opacity of window - 0 = transparent, 255 = opaque
-    MMAL_RECT_T previewWindow;             /// Destination rectangle for the preview window.
-    MMAL_COMPONENT_T *preview_component;   /// Pointer to the created preview display component
-} FLASHCAM_PREVIEW_T;
-
-
 /** Structure containing all state information for the current run
  */
 typedef struct
@@ -124,11 +111,11 @@ typedef struct
     int cameraNum;                          // Camera number
     int onlyLuma;                           // Only output the luma / Y plane of the YUV data
     
-    FLASHCAM_PREVIEW_T preview_parameters;  // Preview setup parameters
     FLASHCAM_PARAMS_T  camera_parameters;   // Camera setup parameters
     
     MMAL_COMPONENT_T *camera_component;     // Pointer to the camera component
-    
+    MMAL_COMPONENT_T *preview_component;   /// Pointer to the preview component
+
     MMAL_CONNECTION_T *preview_connection;  // Pointer to the connection from camera to preview
     MMAL_POOL_T *camera_pool;               // Pointer to the pool of buffers used by camera stills port
 } RASPISTILLYUV_STATE;
@@ -142,8 +129,6 @@ typedef struct
     VCOS_SEMAPHORE_T complete_semaphore; /// semaphore which is posted when we reach end of frame (indicates end of capture or fault)
     RASPISTILLYUV_STATE *pstate;            /// pointer to our state in case required in callback
 } PORT_USERDATA;
-
-static void display_valid_parameters(char *app_name);
 
 /**
  * Assign a default set of parameters to the state passed in
@@ -162,21 +147,16 @@ static void default_status(RASPISTILLYUV_STATE *state)
     memset(state, 0, sizeof(RASPISTILLYUV_STATE));
     
     // Now set anything non-zero
-    state->width        = 100;
-    state->height       = 100;
-    state->filename     = NULL;
-    state->verbose      = 1;
-    state->settings     = 0;
-    state->cameraNum    = 0;
-    state->onlyLuma     = 0;
+    state->width                = 100;
+    state->height               = 100;
+    state->filename             = NULL;
+    state->verbose              = 1;
+    state->settings             = 0;
+    state->cameraNum            = 0;
+    state->onlyLuma             = 0;
     
     // Setup preview window defaults
-    state->preview_parameters.opacity               = 255;
-    state->preview_parameters.previewWindow.x       = 0;
-    state->preview_parameters.previewWindow.y       = 0;
-    state->preview_parameters.previewWindow.width   = 1024;
-    state->preview_parameters.previewWindow.height  = 768;
-    state->preview_parameters.preview_component     = NULL;
+    state->preview_component    = NULL;
     
     // Set up the camera_parameters to default
     FlashCam::getDefaultParams(&state->camera_parameters);
@@ -610,7 +590,7 @@ static void signal_handler(int signal_number)
 }
 
 
-static MMAL_STATUS_T preview_create( FLASHCAM_PREVIEW_T *state ) {
+static MMAL_STATUS_T create_preview_component( RASPISTILLYUV_STATE *state ) {
     MMAL_COMPONENT_T *preview = 0;
     MMAL_PORT_T *preview_port = NULL;
     MMAL_STATUS_T status;
@@ -648,7 +628,7 @@ error:
  * @param state Pointer to state control struct
  *
  */
-void preview_destroy(FLASHCAM_PREVIEW_T *state)
+void destroy_preview_component(RASPISTILLYUV_STATE *state)
 {
     if (state->preview_component)
     {
@@ -706,7 +686,7 @@ int main(int argc, const char **argv)
         vcos_log_error("%s: Failed to create camera component", __func__);
         exit_code = EX_SOFTWARE;
     }
-    else if ((status = preview_create(&state.preview_parameters)) != MMAL_SUCCESS)
+    else if ((status = create_preview_component(&state)) != MMAL_SUCCESS)
     {
         vcos_log_error("%s: Failed to create preview component", __func__);
         destroy_camera_component(&state);
@@ -724,7 +704,7 @@ int main(int argc, const char **argv)
         
         // Note we are lucky that the preview and null sink components use the same input port
         // so we can simple do this without conditionals
-        preview_input_port  = state.preview_parameters.preview_component->input[0];
+        preview_input_port  = state.preview_component->input[0];
         
         // Connect camera to preview (which might be a null_sink if no preview required)
         status = connect_ports(camera_preview_port, preview_input_port, &state.preview_connection);
@@ -758,10 +738,6 @@ int main(int argc, const char **argv)
             if (state.verbose)
                 fprintf(stderr, "Starting video preview\n");
             
-            
-            int frame = (int)time(NULL);
-            
-            
             if (state.verbose)
                 fprintf(stderr, "Opening output file %s\n", state.filename);
             // Technically it is opening the temp~ filename which will be ranamed to the final filename
@@ -776,7 +752,6 @@ int main(int argc, const char **argv)
             
             callback_data.file_handle = output_file;
             
-
             if (output_file)
             {
                 int num, q;
@@ -801,7 +776,7 @@ int main(int argc, const char **argv)
                 }
                 
                 if (state.verbose)
-                    fprintf(stderr, "Starting capture %d\n", frame);
+                    fprintf(stderr, "Starting capture %s\n", state.filename);
                 
                 if (mmal_port_parameter_set_boolean(camera_still_port, MMAL_PARAMETER_CAPTURE, 1) != MMAL_SUCCESS)
                 {
@@ -814,7 +789,7 @@ int main(int argc, const char **argv)
                     // even though it appears to be all correct, so reverting to untimed one until figure out why its erratic
                     vcos_semaphore_wait(&callback_data.complete_semaphore);
                     if (state.verbose)
-                        fprintf(stderr, "Finished capture %d\n", frame);
+                        fprintf(stderr, "Finished capture %s\n", state.filename);
                 }
                 
                 // Ensure we don't die if get callback with no open file
@@ -850,13 +825,13 @@ int main(int argc, const char **argv)
             mmal_connection_destroy(state.preview_connection);
         
         /* Disable components */
-        if (state.preview_parameters.preview_component)
-            mmal_component_disable(state.preview_parameters.preview_component);
+        if (state.preview_component)
+            mmal_component_disable(state.preview_component);
         
         if (state.camera_component)
             mmal_component_disable(state.camera_component);
         
-        preview_destroy(&state.preview_parameters);
+        destroy_preview_component(&state);
         destroy_camera_component(&state);
         
         if (state.verbose)
