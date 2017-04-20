@@ -48,6 +48,7 @@ FlashCam::FlashCam(){
     _preview_component  = NULL;
     _preview_connection = NULL;
     _camera_pool        = NULL;
+    _frame              = NULL;
     
     //set userdata
     _userdata.params    = &_params;
@@ -132,13 +133,12 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
         
         if (bytes_to_write) {
             fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, userdata->params->height, userdata->params->width);
-            fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, port->format->es->video.height, port->format->es->video.width);
             
             //unsigned char *img = pData->pstate->cvimage.ptr<uchar> ( 0 );
             //memcpy ( img, buffer->data, bytes_to_write );
             bytes_written = bytes_to_write;
             
-            fprintf(stderr, "Done...\n");
+            //fprintf(stderr, "Done...\n");
         }
         
         // We need to check we wrote what we wanted - it's possible we have run out of storage.
@@ -226,7 +226,7 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     // Align height/width
     _params.width  = VCOS_ALIGN_UP(_params.width, 32);
     _params.height = VCOS_ALIGN_UP(_params.height, 16);
-
+    
     // setup the camera configuration
     MMAL_PARAMETER_CAMERA_CONFIG_T cam_config =
     {
@@ -273,7 +273,10 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     
     //Capture format ==> same as Preview, except for encoding (YUV!)
     format->encoding                    = MMAL_ENCODING_I420;
-    format->encoding_variant            = MMAL_ENCODING_I420;        
+    format->encoding_variant            = MMAL_ENCODING_I420;     
+    // YUV-data framesize 
+    unsigned int frame_buffer_size      = VCOS_ALIGN_UP(_params.width * _params.height * 1.5, 32);
+    
     // RGB encoding..
     //format->encoding = mmal_util_rgb_order_fixed(still_port) ? MMAL_ENCODING_RGB24 : MMAL_ENCODING_BGR24;
     //format->encoding_variant = 0;
@@ -306,6 +309,15 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     } else {
         _userdata.camera_pool = _camera_pool;
     }
+    
+    //create buffer for image
+    _frame = new unsigned char[frame_buffer_size];
+    if (!_frame) {
+        vcos_log_error("Failed to allocate image buffer");
+    } else {
+        _userdata.frame = _frame;
+    }
+
     
     if (_params.verbose)
         fprintf(stderr, "Camera component done\n");
@@ -376,6 +388,12 @@ void FlashCam::release() {
     // Dealloc components
     destroy_component( _preview_component );
     destroy_component( _camera_component  );
+    
+    //clear buffer
+    if (_frame) 
+        delete[] _frame;
+
+    
     
     if (_params.verbose)
         fprintf(stderr, "Close down completed, all components disconnected, disabled and destroyed\n\n");

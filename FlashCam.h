@@ -93,6 +93,7 @@ private:
         FLASHCAM_PARAMS_T *params;      // Pointer to param set
         VCOS_SEMAPHORE_T   sem_capture; // Semaphore indicating the completion of a frame capture
         MMAL_POOL_T       *camera_pool; // Pool of buffers for camera
+        unsigned char     *frame;      // Buffer for final image        
     } FLASHCAM_PORT_USERDATA_T;
         
     //private variables
@@ -103,6 +104,7 @@ private:
     MMAL_CONNECTION_T          *_preview_connection;
     MMAL_POOL_T                *_camera_pool;
     FLASHCAM_PORT_USERDATA_T    _userdata;
+    unsigned char              *_frame;
     
     //callbacks for async image/update retrieval
     static void control_callback( MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
