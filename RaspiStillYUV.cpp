@@ -252,7 +252,7 @@ static void camera_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buff
             bytes_to_write = vcos_min(buffer->length, port->format->es->video.width * port->format->es->video.height);
         
         if (bytes_to_write) {
-            //fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, pData->pstate->height, pData->pstate->width);
+            fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, pData->pstate->height, pData->pstate->width);
             fprintf(stderr, "Copying... %d (%d x %d)\n",  bytes_to_write, port->format->es->video.height, port->format->es->video.width);
 
             unsigned char *img = pData->pstate->cvimage.ptr<uchar> ( 0 );
@@ -348,7 +348,6 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
     
     //FlashCam functions
     FlashCam flashcam = FlashCam();
-    FLASHCAM_PARAMS_T camera_parameters_copy;
     
     /* Create the component */
     status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &camera);
@@ -433,11 +432,9 @@ static MMAL_STATUS_T create_camera_component(RASPISTILLYUV_STATE *state)
         flashcam.printParams(&state->camera_parameters);
     }
     
-    
     // Now set up the port formats
     state->width  = VCOS_ALIGN_UP(state->width, 32);
     state->height = VCOS_ALIGN_UP(state->height, 16);
-    
     
     format = preview_port->format;
     

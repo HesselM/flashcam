@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 2.8.11)
 
-project(flashcamyuv)
+project(flashcam)
 
 SET(COMPILE_DEFINITIONS -Werror)
 
@@ -33,15 +33,15 @@ include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # executables
-add_executable(flashcamyuv RaspiStillYUV.cpp FlashCam.cpp types.c)
+add_executable(flashcam FlashCam_test.cpp FlashCam.cpp types.c)
 
 
 # Libraries
-target_link_libraries(flashcamyuv ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(flashcamyuv ${OpenCV_LIBS} )
-target_link_libraries(flashcamyuv ${MMAL_LIBRARIES})
-target_link_libraries(flashcamyuv ${BCMHOST_LIBRARIES})
-target_link_libraries(flashcamyuv m)
+target_link_libraries(flashcam ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(flashcam ${OpenCV_LIBS} )
+target_link_libraries(flashcam ${MMAL_LIBRARIES})
+target_link_libraries(flashcam ${BCMHOST_LIBRARIES})
+target_link_libraries(flashcam m)
 
 message("Used CXX flags: ${CMAKE_CXX_FLAGS}")
 message("Used C flags: ${CMAKE_C_FLAGS}")
