@@ -46,53 +46,42 @@ static cv::Mat cvimage;
 
 void test(unsigned char *frame, int w, int h) {
     fprintf(stderr, "callback: %p (%d x %d)\n", frame, w, h);
-    
-    //build cv image
-    cvimage.create( h * 1.5, w, CV_8UC1 );
+    //update opencv image
     cvimage.data = (uchar*) frame;
-    
-    cv::imshow ("cvwindow", cvimage);
-    cv::waitKey(0);
-    cvimage.release();
 }
 
 
 int main(int argc, const char **argv) {
-    //create camera
-    FlashCam camera = FlashCam();
-    camera.setFrameCallback(&test);
     
-    //get & print params
+    //get default params
     FLASHCAM_PARAMS_T params = {};
-    camera.getAllParams( &params , true);
-    FlashCam::printParams( &params );
+    FlashCam::getDefaultParams( &params );
 
-    camera.getAllParams( &params , false);
-    FlashCam::printParams( &params );
+    //update params
+    params.width=100;
+    params.height=100;
+    params.verbose=0;
+    params.flash=MMAL_PARAM_FLASH_ON;
+        
+    //create camera with params
+    FlashCam camera = FlashCam( &params );
+    
+    //set callback
+    camera.setFrameCallback(&test);
+
+    //get & print params
+    camera.getAllParams( &params , true);    
+    cvimage.create( params.height * 1.5, params.width, CV_8UC1 );
 
     //create openCV window
     cv::namedWindow( "cvwindow", cv::WINDOW_AUTOSIZE );
 
-    //create image
-    camera.capture();
-    
-    //cv::imshow ("cvwindow", cvimage);
-    //cv::waitKey(0);
-    //cvimage.release();
-    
-    //get image
-    camera.capture();
-    
-    //cv::imshow ("cvwindow", cvimage);
-    //cv::waitKey(0);
-    //cvimage.release();
-
-    //get image
-    camera.capture();
-    
-    //cv::imshow ("cvwindow", cvimage);
-    //cv::waitKey(0);
-    //cvimage.release();
+    for (int i=0; i<100; i++) {
+        //create image
+        camera.capture();    
+        cv::imshow ("cvwindow", cvimage);
+        cv::waitKey(1);
+    }
 
     return 0;
 }
