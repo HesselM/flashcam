@@ -39,22 +39,60 @@
 #include "FlashCam_test.h"
 
 #include "FlashCam.h"
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+static cv::Mat cvimage;
+
+void test(unsigned char *frame, int w, int h) {
+    fprintf(stderr, "callback: %p (%d x %d)\n", frame, w, h);
+    
+    //build cv image
+    cvimage.create( h * 1.5, w, CV_8UC1 );
+    cvimage.data = (uchar*) frame;
+    
+    cv::imshow ("cvwindow", cvimage);
+    cv::waitKey(0);
+    cvimage.release();
+}
+
 
 int main(int argc, const char **argv) {
     //create camera
     FlashCam camera = FlashCam();
+    camera.setFrameCallback(&test);
     
     //get & print params
     FLASHCAM_PARAMS_T params = {};
     camera.getAllParams( &params , true);
     FlashCam::printParams( &params );
-    
-    //init params
-    camera.init();
-    
+
+    camera.getAllParams( &params , false);
+    FlashCam::printParams( &params );
+
+    //create openCV window
+    cv::namedWindow( "cvwindow", cv::WINDOW_AUTOSIZE );
+
     //create image
     camera.capture();
     
+    //cv::imshow ("cvwindow", cvimage);
+    //cv::waitKey(0);
+    //cvimage.release();
+    
     //get image
     camera.capture();
+    
+    //cv::imshow ("cvwindow", cvimage);
+    //cv::waitKey(0);
+    //cvimage.release();
+
+    //get image
+    camera.capture();
+    
+    //cv::imshow ("cvwindow", cvimage);
+    //cv::waitKey(0);
+    //cvimage.release();
+
+    return 0;
 }

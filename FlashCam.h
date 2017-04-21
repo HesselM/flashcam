@@ -76,7 +76,11 @@ typedef struct {
     
 } FLASHCAM_PARAMS_T;
 
-
+// Function pointer for callback:
+//  - unsigned char *frame  : pointer to frame containing frame data
+//  - int width             : width of image
+//  - int height            : height of image
+typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
 
 
 class FlashCam 
@@ -90,30 +94,32 @@ private:
      * used internally for communication and status-updates with the camera
      */
     typedef struct {
-        FLASHCAM_PARAMS_T *params;      // Pointer to param set
-        VCOS_SEMAPHORE_T   sem_capture; // Semaphore indicating the completion of a frame capture
-        MMAL_POOL_T       *camera_pool; // Pool of buffers for camera
-        unsigned char     *frame;      // Buffer for final image        
+        FLASHCAM_PARAMS_T   *params;            // Pointer to param set
+        MMAL_POOL_T         *camera_pool;       // Pool of buffers for camera
+        unsigned char       *framebuffer;       // Buffer for final image   
+        unsigned int         framebuffer_size;  // Size of buffer
+        unsigned int         framebuffer_idx;   // Tracker to stitch imager properly from the camera-callback payloads
+        VCOS_SEMAPHORE_T     sem_capture;       // Semaphore indicating the completion of a frame capture
+        FLASHCAM_CALLBACK_T  callback;          // Callback to user function
     } FLASHCAM_PORT_USERDATA_T;
-        
+    
     //private variables
     bool                        _init;
+    bool                        _capturing;
     FLASHCAM_PARAMS_T           _params;
     MMAL_COMPONENT_T           *_camera_component;
     MMAL_COMPONENT_T           *_preview_component;
     MMAL_CONNECTION_T          *_preview_connection;
     MMAL_POOL_T                *_camera_pool;
     FLASHCAM_PORT_USERDATA_T    _userdata;
-    unsigned char              *_frame;
+    unsigned char              *_framebuffer;
     
     //callbacks for async image/update retrieval
     static void control_callback( MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
     static void buffer_callback(  MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
     
-    //Camera setup function
+    //Camera/Preview setup functions
     MMAL_STATUS_T create_camera_component();
-    
-    //Preview setup functions
     MMAL_STATUS_T create_preview_component();
     void destroy_component( MMAL_COMPONENT_T *component );
     
@@ -121,40 +127,40 @@ private:
     MMAL_STATUS_T setParameterRational( int id , int  val );
     MMAL_STATUS_T getParameterRational( int id , int *val );
     MMAL_STATUS_T connect_ports( MMAL_PORT_T *output_port , MMAL_PORT_T *input_port , MMAL_CONNECTION_T **connection );
-    void check_disable_port( MMAL_PORT_T *port );
-    void signal_handler( int signal_number );
 
     //dealloc data
     void release();
     
+    //initialization function
+    int initCamera(FLASHCAM_PARAMS_T *params);
     
+    // Set all Camera Parameters
+    // -> Private as it is called by constructor,
+    int setAllParams(FLASHCAM_PARAMS_T *params);
+
 public:
     
-    // Constructor / Destructor
+    // Constructor 
+    //  - initialize the camera with default or specified parameters
     FlashCam();
-    ~FlashCam();
+    FlashCam(FLASHCAM_PARAMS_T *params);
     
-    // initialize the camera with default or specified parameters
-    int init();
-    int init(FLASHCAM_PARAMS_T *params);
+    // Destructor
+    ~FlashCam();
     
     // capture image
     int capture();
+    
+    //callback options --> for when a full frame is received
+    void setFrameCallback(FLASHCAM_CALLBACK_T callback);
+    void resetFrameCallback();
     
     // parameter utilities
     static void getDefaultParams(FLASHCAM_PARAMS_T *params);
     static void printParams(FLASHCAM_PARAMS_T *params);
     
-    // retrieve or set all implemented camera parameters
-    int  setAllParams(FLASHCAM_PARAMS_T *params);
+    // retrieve currently set camera parameters
     int  getAllParams(FLASHCAM_PARAMS_T *params, bool mem);
-    
-
-    
-    //old
-    void setCamera(MMAL_COMPONENT_T *camera);
-    
-
     
     
     /******************************************/
