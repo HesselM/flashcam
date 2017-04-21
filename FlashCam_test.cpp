@@ -42,12 +42,19 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-static cv::Mat cvimage;
+#include <time.h>
 
-void test(unsigned char *frame, int w, int h) {
+static cv::Mat Y;
+static cv::Mat U;
+static cv::Mat V;
+
+void flashcam_callback(unsigned char *frame, int w, int h) {
     fprintf(stderr, "callback: %p (%d x %d)\n", frame, w, h);
     //update opencv image
-    cvimage.data = (uchar*) frame;
+    Y.data = (uchar*) &(frame[0]);
+    U.data = (uchar*) &(frame[(w*h*1)>>0]);
+    V.data = (uchar*) &(frame[(w*h*5)>>2]);
+    
 }
 
 
@@ -58,29 +65,57 @@ int main(int argc, const char **argv) {
     FlashCam::getDefaultParams( &params );
 
     //update params
-    params.width=100;
-    params.height=100;
+    params.width=320;
+    params.height=240;
     params.verbose=0;
-    params.flash=MMAL_PARAM_FLASH_ON;
         
     //create camera with params
     FlashCam camera = FlashCam( &params );
     
     //set callback
-    camera.setFrameCallback(&test);
+    camera.setFrameCallback( &flashcam_callback );
 
+    //set camera params
+    camera.setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
+    camera.setShutterSpeed(350);
+    camera.setFlashMode(MMAL_PARAM_FLASH_ON);
+    camera.setDenoise(0);
+    camera.setISO(800);
+    camera.setRotation(270);
+    
     //get & print params
-    camera.getAllParams( &params , true);    
-    cvimage.create( params.height * 1.5, params.width, CV_8UC1 );
+    camera.getAllParams( &params , true);   
+    FlashCam::printParams( &params ); 
+    
 
     //create openCV window
-    cv::namedWindow( "cvwindow", cv::WINDOW_AUTOSIZE );
+    Y.create( params.height, params.width, CV_8UC1 );
+    cv::namedWindow( "Y", cv::WINDOW_AUTOSIZE );
+    U.create( params.height >> 1, params.width >> 1, CV_8UC1 );
+    cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
+    V.create( params.height >> 1, params.width >> 1, CV_8UC1 );
+    cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
 
-    for (int i=0; i<100; i++) {
-        //create image
-        camera.capture();    
-        cv::imshow ("cvwindow", cvimage);
-        cv::waitKey(1);
+    double start   = 0;
+    double elapsed = 0;
+    double sum     = 0;
+
+    for (int i=0; i<10; i++) {
+        
+        start=cv::getTickCount();
+        
+        //capture image
+        camera.capture();   
+        
+        elapsed = double ( cv::getTickCount() - start ) / double ( cv::getTickFrequency() ); //time in second
+        sum    += elapsed;
+        
+        fprintf(stderr, "elapsed: %f (avg: %f)\n", elapsed, sum/double(i+1));
+        
+        cv::imshow ("Y", Y);
+        cv::imshow ("U", U);
+        cv::imshow ("V", V);
+        cv::waitKey(0);
     }
 
     return 0;
