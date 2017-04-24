@@ -18,88 +18,110 @@ extern "C" {
 
 // Standard port setting for the camera component
 #define MMAL_CAMERA_PREVIEW_PORT 0
-//#define MMAL_CAMERA_VIDEO_PORT 1
+#define MMAL_CAMERA_VIDEO_PORT   1
 #define MMAL_CAMERA_CAPTURE_PORT 2
 
 // Stills format information
 // 0 implies variable
-#define CAPTURE_FRAME_RATE_NUM 0
-#define CAPTURE_FRAME_RATE_DEN 1
 #define PREVIEW_FRAME_RATE_NUM 0
 #define PREVIEW_FRAME_RATE_DEN 1
+#define   VIDEO_FRAME_RATE_NUM 30
+#define   VIDEO_FRAME_RATE_DEN 1
+#define CAPTURE_FRAME_RATE_NUM 0
+#define CAPTURE_FRAME_RATE_DEN 1
 
 /*
  * Constructor
  */
-FlashCam::FlashCam(){
-    //we are not yet initialised
-    _init = false;
+FlashCam::FlashCam(){    
+    //basic init. 
+    _initialised = false;
+    _active      = false;
     
     //init with current (=default!) parameter set;
-    getDefaultParams(&_params);    
-    initCamera(&_params);
+    getDefaultSettings(&_settings);    
+    setupComponents(&_settings);
+    
+    //set proper mode
+    setSettingMode(_settings.mode);
+
 }
 
-FlashCam::FlashCam(FLASHCAM_PARAMS_T *params){
-    //we are not yet initialised
-    _init = false;
+FlashCam::FlashCam(FLASHCAM_SETTINGS_T *settings){
+    //basic init. 
+    _initialised = false;
+    _active      = false;
     
     //init with current (=default!) parameter set;
-    initCamera(params);
+    setupComponents(settings);
+    
+    //set proper mode
+    setSettingMode(_settings.mode);
 }
 
 /*
  * Destructor
  */
 FlashCam::~FlashCam(){
-    release();
+    destroyComponents();
     // delete semaphore
     vcos_semaphore_delete(&_userdata.sem_capture);
 }
 
-// initialize the camera with specified parameters
-int FlashCam::initCamera(FLASHCAM_PARAMS_T *params) {
+// setup the camera with specified settings
+int FlashCam::setupComponents(FLASHCAM_SETTINGS_T *settings) {
     
-    // Are we already initialised?
-    if (_init) {
-        if (_params.verbose)
-            fprintf(stderr, "Already initialised\n");
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot update camera while being in use\n", __func__);
         return EX_OK;
     }
     
-    // initialise bcm_host
-    bcm_host_init();
-    
-    //register to VCOS for logging
-    vcos_log_register("FlashCam", VCOS_LOG_CATEGORY);
-    
-    // init private variables
-    memcpy(&_params, params, sizeof(FLASHCAM_PARAMS_T));
-    _capturing                  = false;
-    _camera_component           = NULL;
-    _preview_component          = NULL;
-    _preview_connection         = NULL;
-    _camera_pool                = NULL;
-    _framebuffer                = NULL;
+    // Only update these settings when initialising for the first time
+    if (!_initialised) {
+        bcm_host_init();
+        
+        //register to VCOS for logging
+        vcos_log_register("FlashCam", VCOS_LOG_CATEGORY);
+        
+        // create & init semaphore
+        if (vcos_semaphore_create(&_userdata.sem_capture, "FlashCam-sem", 0) != VCOS_SUCCESS) {
+            vcos_log_error("%s: Failed to create semaphore", __func__);
+            return EX_SOFTWARE;
+        }    
+        
+        //setup default camera params 
+        getDefaultParams(&_params);
+    }
+
+    //clear current setup
+    destroyComponents();
+
+    // init/reset private variables
+    //_initialised          : set at the end of this function.
+    //_active = false       : initialised by constructor. Set when camera is recording.
+    //_params = default     : initialised by constructor. Updated by User.
+    memcpy(&_settings, settings, sizeof(FLASHCAM_SETTINGS_T));
+    //_camera_component     : (re)set by destroyComponents()
+    //_preview_component    : (re)set by destroyComponents()
+    //_preview_connection   : (re)set by destroyComponents()
+    //_camera_pool          : (re)set by destroyComponents()
+    //_framebuffer          : (re)set by destroyComponents()
     
     //set userdata
     _userdata.params            = &_params;
+    _userdata.settings          = &_settings;
     _userdata.camera_pool       = NULL;
     _userdata.framebuffer       = NULL;
     _userdata.framebuffer_size  = 0;
     _userdata.framebuffer_idx   = 0;
     _userdata.callback          = NULL;
     
-    // create & init semaphore
-    VCOS_STATUS_T vcos_status = vcos_semaphore_create(&_userdata.sem_capture, "FlashCam-sem", 0);
-    vcos_assert(vcos_status == VCOS_SUCCESS);
-    
     //Status flags
-    int exit_code               = EX_OK;
     MMAL_STATUS_T status        = MMAL_SUCCESS;
         
     //print that we are starting
-    if (params->verbose)
+    if (settings->verbose)
         fprintf(stderr, "\n FlashCam Version: %s\n\n", FLASHCAM_VERSION_STRING);
         
     //setup camera
@@ -109,9 +131,9 @@ int FlashCam::initCamera(FLASHCAM_PARAMS_T *params) {
     //      _userdata.camera_pool
     //      _userdata.framebuffer
     //      _userdata.framebuffer_size
-    if ((status = create_camera_component()) != MMAL_SUCCESS)  {
+    if ((status = setupComponentCamera()) != MMAL_SUCCESS)  {
         vcos_log_error("%s: Failed to create camera component", __func__);
-        release();
+        destroyComponents();
         return EX_SOFTWARE;
     }
     
@@ -119,52 +141,49 @@ int FlashCam::initCamera(FLASHCAM_PARAMS_T *params) {
     // -> But we need it as it is used for measurements such as awb
     // internally sets:
     //      _preview_component
-    if ((status = create_preview_component()) != MMAL_SUCCESS) {
+    if ((status = setupComponentPreview()) != MMAL_SUCCESS) {
         vcos_log_error("%s: Failed to create preview component", __func__);
-        release();
+        destroyComponents();
         return EX_SOFTWARE;
     }
     
-    if (_params.verbose)
+    if (_settings.verbose)
         fprintf(stderr, "Starting component connection stage\n");
     
     //get ports
-    MMAL_PORT_T *capture_port = _camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
-    MMAL_PORT_T *preview_port = _camera_component->output[MMAL_CAMERA_PREVIEW_PORT];    
-    // Note we are lucky that the preview and null sink components use the same input port
-    // so we can simple do this without conditionals
-    MMAL_PORT_T *preview_input_port = _preview_component->input[0];
+    MMAL_PORT_T *preview_port       = _camera_component->output[MMAL_CAMERA_PREVIEW_PORT];   
+    MMAL_PORT_T *preview_port_input = _preview_component->input[0];
     
     // Connect preview
-    if ((status = connect_ports(preview_port, preview_input_port, &_preview_connection)) != MMAL_SUCCESS) {
-        vcos_log_error("%s: Failed to connect camera to preview", __func__);
-        release();
+    if ((status = connectPorts(preview_port, preview_port_input, &_preview_connection)) != MMAL_SUCCESS) {
+        vcos_log_error("%s: Failed to connect preview port", __func__);
+        destroyComponents();
         return EX_SOFTWARE;
     }
     
-    //Setup userdata / camera
-    capture_port->userdata = (struct MMAL_PORT_USERDATA_T *)&_userdata;
-    
-    if (_params.verbose)
-        fprintf(stderr, "Enabling camera still output port\n");
-    
-    // Enable the camera still output port and tell it its callback function
-    if ((status = mmal_port_enable(capture_port, FlashCam::buffer_callback)) != MMAL_SUCCESS) {
-        vcos_log_error("Failed to setup camera output");
-        release();
-        return EX_SOFTWARE;
-    }
-        
-    if (setAllParams(&_params)) {
-        vcos_log_error("Failed to set params");
-    }
-
-    if (_params.verbose)
+    if (_settings.verbose)
         fprintf(stderr, "Finished setup\n");
     
-    _init = true;
+    _initialised = true;
+
     return EX_OK;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
  * void FlashCam::control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
@@ -326,52 +345,52 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
 
 
 //Camera setup function
-MMAL_STATUS_T FlashCam::create_camera_component() {
+MMAL_STATUS_T FlashCam::setupComponentCamera() {
     MMAL_STATUS_T status;
     
     // Create Component
     if ((status = mmal_component_create(MMAL_COMPONENT_DEFAULT_CAMERA, &_camera_component)) != MMAL_SUCCESS) {
         vcos_log_error("Failed to create camera component");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return status;
     }
     
     // Select Camera
     if ( setCameraNum(_params.cameranum) ) {
         vcos_log_error("Could not select camera");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return MMAL_EINVAL;
     }
     
     // Validate outputs are available
     if (!_camera_component->output_num){
         vcos_log_error("Camera doesn't have output ports");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return MMAL_EINVAL;
     }
-    
-    MMAL_PORT_T *preview_port = _camera_component->output[MMAL_CAMERA_PREVIEW_PORT];
-    MMAL_PORT_T *capture_port = _camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
-    
+        
     // Do we want setting-update messages?
-    if (_params.getsettings) {
-        if (setChangeEventRequest(MMAL_PARAMETER_CAMERA_SETTINGS, 1)) {
-            vcos_log_error("No camera settings events");
-        }
+    if (setChangeEventRequest(MMAL_PARAMETER_CAMERA_SETTINGS, _settings.update)) {
+        vcos_log_error("No camera settings events");
     }
     
     // Enable the camera, and tell it its control callback function
     if ((status = mmal_port_enable(_camera_component->control, FlashCam::control_callback)) != MMAL_SUCCESS ) {
         vcos_log_error("Unable to enable control port : error %d", status);
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return status;
     }
     
+    // Setup ports
+    MMAL_PORT_T *preview_port = _camera_component->output[MMAL_CAMERA_PREVIEW_PORT];
+    MMAL_PORT_T   *video_port = _camera_component->output[MMAL_CAMERA_VIDEO_PORT  ];
+    MMAL_PORT_T *capture_port = _camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
+    
     // Align height/width
-    _params.width  = VCOS_ALIGN_UP(_params.width, 32);
+    _params.width  = VCOS_ALIGN_UP(_params.width , 32);
     _params.height = VCOS_ALIGN_UP(_params.height, 16);
     
-    if (_params.verbose)
+    if (_settings.verbose)
         fprintf(stderr, "Aligned image size: %d x %d (w x h) \n" , _params.width , _params.height);
     
     // setup the camera configuration
@@ -392,7 +411,7 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     
     if ( setCameraConfig( &cam_config ) ) {
         vcos_log_error("Could not setup camera");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return MMAL_EINVAL;
     }
     
@@ -414,20 +433,34 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     //Update preview-port with set format
     if ((status = mmal_port_format_commit(preview_port)) != MMAL_SUCCESS ) {
         vcos_log_error("Preview format couldn't be set");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return status;
     }
     
-    
-    format = capture_port->format;
-    
-    //Capture format ==> same as Preview, except for encoding (YUV!)
+    //Video format ==> same as Preview, except for encoding (YUV!)
+    format = video_port->format;
     format->encoding                    = MMAL_ENCODING_I420;
     format->encoding_variant            = MMAL_ENCODING_I420;     
-    // RGB encoding..
-    //format->encoding = mmal_util_rgb_order_fixed(still_port) ? MMAL_ENCODING_RGB24 : MMAL_ENCODING_BGR24;
-    //format->encoding_variant = 0;
-
+    format->es->video.width             = _params.width;
+    format->es->video.height            = _params.height;
+    format->es->video.crop.x            = 0;
+    format->es->video.crop.y            = 0;
+    format->es->video.crop.width        = _params.width;
+    format->es->video.crop.height       = _params.height;
+    format->es->video.frame_rate.num    = VIDEO_FRAME_RATE_NUM;
+    format->es->video.frame_rate.den    = VIDEO_FRAME_RATE_DEN;
+    
+    //Update capture-port with set format
+    if ((status = mmal_port_format_commit(video_port)) != MMAL_SUCCESS ) {
+        vcos_log_error("Video format couldn't be set");
+        destroyComponents();        
+        return status;
+    }
+    
+    //Capture format ==> same as Preview, except for encoding (YUV!)    
+    format = capture_port->format;
+    format->encoding                    = MMAL_ENCODING_I420;
+    format->encoding_variant            = MMAL_ENCODING_I420;     
     format->es->video.width             = _params.width;
     format->es->video.height            = _params.height;
     format->es->video.crop.x            = 0;
@@ -436,46 +469,25 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     format->es->video.crop.height       = _params.height;
     format->es->video.frame_rate.num    = CAPTURE_FRAME_RATE_NUM;
     format->es->video.frame_rate.den    = CAPTURE_FRAME_RATE_DEN;
-    
-    // YUV-data framesize 
-    _userdata.framebuffer_size          = VCOS_ALIGN_UP(_params.width * _params.height * 1.5, 32);    
-    
+        
     //Update capture-port with set format
     if ((status = mmal_port_format_commit(capture_port)) != MMAL_SUCCESS ) {
         vcos_log_error("Capture format couldn't be set");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return status;
     }
     
     //Enable camera
     if ((status = mmal_component_enable(_camera_component)) != MMAL_SUCCESS ) {
         vcos_log_error("Camera component couldn't be enabled");
-        destroy_component( _camera_component );        
+        destroyComponents();        
         return status;
     }
 
-    
-    //Set correct buffer sizes 
-    if (capture_port->buffer_size < capture_port->buffer_size_min)
-        capture_port->buffer_size = capture_port->buffer_size_min;
-    //capture_port->buffer_size = capture_port->buffer_size_recommended;
-    capture_port->buffer_num  = capture_port->buffer_num_recommended;
-    
-    if (_params.verbose) {
-        fprintf(stderr, "Camera Pool size  : %d\n", capture_port->buffer_num);
-        fprintf(stderr, "Camera Buffer size: %d\n", capture_port->buffer_size);
-        fprintf(stderr, "Total Pool size   : %d\n", capture_port->buffer_num * capture_port->buffer_size);
-    }
-    
-    
-    // Create pool of buffer headers for the output port to consume
-    _camera_pool = mmal_port_pool_create(capture_port, capture_port->buffer_num, capture_port->buffer_size);
-    if (!_camera_pool) {
-        vcos_log_error("Failed to create buffer header pool");
-    } else {
-        _userdata.camera_pool = _camera_pool;
-    }
-    
+      
+    // YUV-data framesize 
+    _userdata.framebuffer_size          = VCOS_ALIGN_UP(_params.width * _params.height * 1.5, 32);    
+
     //create buffer for image
     _framebuffer = new unsigned char[_userdata.framebuffer_size];
     if (!_framebuffer) {
@@ -485,40 +497,31 @@ MMAL_STATUS_T FlashCam::create_camera_component() {
     }
     
     
-    if (_params.verbose)
+    if (_settings.verbose)
         fprintf(stderr, "Camera component done\n");
     
     return MMAL_SUCCESS;
 }
 
 //Preview setup functions
-MMAL_STATUS_T FlashCam::create_preview_component() {
+MMAL_STATUS_T FlashCam::setupComponentPreview() {
     MMAL_STATUS_T status;
     
     //set nullsink
     if ((status = mmal_component_create("vc.null_sink", &_preview_component)) != MMAL_SUCCESS) {
         vcos_log_error("Unable to create null sink component (%u)", status);
-        destroy_component( _preview_component );        
+        destroyComponents();        
         return status;
     }
     
     // Enable component
     if ((status = mmal_component_enable( _preview_component )) != MMAL_SUCCESS) {
         vcos_log_error("Unable to enable preview/null sink component (%u)", status);
-        destroy_component( _preview_component );        
+        destroyComponents();        
         return status;
     }
     
     return MMAL_SUCCESS;
-}
-
-
-// Delete component
-void FlashCam::destroy_component(MMAL_COMPONENT_T *component) {
-    if (component) {
-        mmal_component_destroy(component);
-        component = NULL;
-    }
 }
 
 
@@ -533,34 +536,47 @@ MMAL_STATUS_T FlashCam::connect_ports(MMAL_PORT_T *output_port, MMAL_PORT_T *inp
 }
 
 
-void FlashCam::release() {
-    if (_params.verbose)
-        fprintf(stderr, "Closing down\n");
+void FlashCam::destroyComponents() {
+    if (_settings.verbose)
+        fprintf(stderr, "Clearing components\n");
     
     //reset init flag    
-    _init = false;
+    _initialised = false;
     
     // Disable connections
-    if (_preview_connection)
+    if (_preview_connection) {
         mmal_connection_destroy(_preview_connection);
+    }
     
     // Disable ports
-    if (_preview_component)
-        mmal_component_disable(_preview_component);
+    if (_preview_component) {
+        mmal_component_disable( _preview_component );
+        mmal_component_destroy( _preview_component );
+    }
     
-    if (_camera_component)
-        mmal_component_disable(_camera_component);
+    if (_camera_component) {
+        mmal_component_disable( _camera_component );
+        mmal_component_destroy( _camera_component );
+    }
     
-    // Dealloc components
-    destroy_component( _preview_component );
-    destroy_component( _camera_component  );
+    // Disable pool
+    if (_camera_pool) {
+        mmal_pool_destroy( _camera_pool );
+    }
     
-    //clear buffer
+    // Clear buffer
     if (_framebuffer) 
         delete[] _framebuffer;
+
+    // Reset pointers
+    _preview_connection = NULL;
+    _preview_component  = NULL;
+    _camera_component   = NULL;
+    _camera_pool        = NULL;
+    _framebuffer        = NULL;
     
-    if (_params.verbose)
-        fprintf(stderr, "Close down completed, all components disconnected, disabled and destroyed\n\n");
+    if (_settings.verbose)
+        fprintf(stderr, "Components cleared\n");
 }
 
 /*
@@ -569,69 +585,112 @@ void FlashCam::release() {
  * Capture an image
  *
  */
-int FlashCam::capture() {
+int FlashCam::startCapture() {
     
-    if (!_init) {
-        vcos_log_error("Camera not initialised\n");
+    if (!_initialised) {
+        vcos_log_error("Camera not initialised.\n");
         return EX_SOFTWARE;
     }
     
-    if (_capturing) {
-        vcos_log_error("Camera already waiting capturing..\n");
+    if (_active) {
+        vcos_log_error("Camera already active.\n");
+        return EX_OK;
+    } 
+
+    if (_settings.verbose)
+        fprintf(stderr, "Starting capture\n");
+
+    if (_settings.mode == FLASHCAM_MODE_VIDEO) {
+        
+        if (setCapture(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], 1)) {
+            vcos_log_error("%s: Failed to start stream", __func__);
+            return EX_SOFTWARE;
+        }
+        
+        //starting stream
+        _active = true;
+        
+    } else if ( _settings.mode = FLASHCAM_MODE_CAPTURE ) { 
+        
+        if (setCapture(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], 1)) {
+            vcos_log_error("%s: Failed to start capture", __func__);
+            return EX_SOFTWARE;
+        }
+        
+        // Wait for capture to complete
+        // For some reason using vcos_semaphore_wait_timeout sometimes returns immediately with bad parameter error
+        // even though it appears to be all correct, so reverting to untimed one until figure out why its erratic
+        _active = true;
+        vcos_semaphore_wait(&_userdata.sem_capture);
+        _active = false;
+    
+    } else {
+        //unknown mode..
+        fprintf(stderr, "Cannot start camera. Unknown mode\n");
+        return EX_SOFTWARE;
+    }
+    
+    if (_settings.verbose)
+        fprintf(stderr, "%s:succes\n", __func__);
+
+    return EX_OK;
+}
+
+
+int stopCapture() {
+    
+    if (!_initialised) {
+        vcos_log_error("Camera not initialised.\n");
+        return EX_SOFTWARE;
+    }
+        
+    if (!_active) {
+        vcos_log_error("Camera not active.\n");
         return EX_OK;
     } 
     
-    // buffer pointer
-    MMAL_BUFFER_HEADER_T *buffer;
-    // number of buffers
-    int qsize = mmal_queue_length(_camera_pool->queue);
+    if (_settings.verbose)
+        fprintf(stderr, "Stopping stream \n");
     
-    // Send all the buffers to the camera output port
-    for (int i=0; i<qsize; i++) {
-        //get buffer
-        buffer = mmal_queue_get(_camera_pool->queue);
+    
+    if (_settings.mode == FLASHCAM_MODE_VIDEO) {
+        //stop video
+        if (setCapture(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], 0)) {
+            vcos_log_error("%s: Failed to stop camera", __func__);
+            return EX_SOFTWARE;
+        }        
         
-        if (!buffer)
-            vcos_log_error("Unable to get a required buffer %d from pool queue", i);
+    } else if ( _settings.mode = FLASHCAM_MODE_CAPTURE ) { 
+        //stop capture
+        if (setCapture(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], 0)) {
+            vcos_log_error("%s: Failed to stop camera", __func__);
+            return EX_SOFTWARE;
+        }        
         
-        if (mmal_port_send_buffer(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], buffer)!= MMAL_SUCCESS)
-            vcos_log_error("Unable to send a buffer to camera output port (%d)", i);
-    }
-    
-    if (_params.verbose)
-        fprintf(stderr, "Starting capture\n");
-    
-    //create capture window
-    //cv::namedWindow( "cvwindow", cv::WINDOW_AUTOSIZE );
-    
-    if (setCapture(1)) {
-        vcos_log_error("%s: Failed to start capture", __func__);
+    } else {
+        //unknown mode..
+        fprintf(stderr, "Cannot stop camera. Unknown mode\n");
         return EX_SOFTWARE;
     }
+
+    //camera inactive
+    _active = false;
     
-    // Wait for capture to complete
-    // For some reason using vcos_semaphore_wait_timeout sometimes returns immediately with bad parameter error
-    // even though it appears to be all correct, so reverting to untimed one until figure out why its erratic
-    _capturing = true;
-    vcos_semaphore_wait(&_userdata.sem_capture);
-    _capturing = false;
-    
-    if (_params.verbose)
-        fprintf(stderr, "Finished capture\n");
-    
-    // cv::imshow ("cvwindow", state.cvimage);
-    // cv::waitKey(0);
+    if (_settings.verbose)
+        fprintf(stderr, "%s:succes\n", __func__);
     
     return EX_OK;
 }
 
+
+
 void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_T callback) {
-    if (_capturing) return; //no changer/reset while in capturemode
+    if (_active) return; //no changer/reset while in capturemode
     _userdata.callback = callback;
 }
 
 void FlashCam::resetFrameCallback() {
-    if (_capturing) return; //no changer/reset while in capturemode
+    if (_active) return; //no changer/reset while in capturemode
     _userdata.callback = NULL;
 }
 
@@ -645,6 +704,114 @@ void FlashCam::resetFrameCallback() {
 
 
 
+
+int FlashCam::setSettingMode() {
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change camera mode while being in use\n", __func__);
+        return EX_SOFTWARE;
+    }
+    
+    // Is camera initialised?
+    if (!_initialised) {
+        fprintf(stderr, "%s: Components not initialised\n", __func__);
+        return EX_SOFTWARE;
+    }
+    
+    //Setup userdata / camera
+    MMAL_PORT_T *old_port = NULL;     
+    MMAL_PORT_T *new_port = NULL;     
+    
+    if (_settings.mode == FLASHCAM_MODE_VIDEO) {
+        //video mode..
+        if (_settings.verbose)
+            fprintf(stderr, "Enabling video-mode.\n");
+        
+        new_port = _camera_component->output[MMAL_CAMERA_VIDEO_PORT];
+        old_port = _camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
+        
+        //set buffer sizes
+        if (new_port->buffer_size < new_port->buffer_size_min)
+            new_port->buffer_size = new_port->buffer_size_min;
+        
+        if (new_port->buffer_num < VIDEO_OUTPUT_BUFFERS_NUM)
+            new_port->buffer_num = VIDEO_OUTPUT_BUFFERS_NUM;
+        
+    } else if (_settings.mode == FLASHCAM_MODE_CAPTURE) {
+        //capture mode..
+        if (_settings.verbose)
+            fprintf(stderr, "Enabling capture-mode.\n");
+        
+        old_port = _camera_component->output[MMAL_CAMERA_VIDEO_PORT];
+        new_port = _camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
+        
+        //set buffer sizes
+        if (new_port->buffer_size < new_port->buffer_size_min)
+            new_port->buffer_size = new_port->buffer_size_min;
+        
+        if (new_port->buffer_num < new_port->buffer_num_recommended)
+            new_port->buffer_num = new_port->buffer_num_recommended;
+        
+    } else {
+        //unknown mode..
+        fprintf(stderr, "Cannot enable camera. Unknown mode\n");
+        return EX_SOFTWARE;
+    };
+    
+    // Disable old port
+    if ( old_port && old_port->is_enabled )
+        mmal_port_disable( old_port );
+    
+    // Disable old pool
+    if ( _camera_pool )
+        mmal_pool_destroy( _camera_pool );
+    
+    // Pool/Buffer sizes 
+    if ( _settings.verbose ) {
+        fprintf(stderr, "- Pool size  : %d\n", new_port->buffer_num);
+        fprintf(stderr, "- Buffer size: %d\n", new_port->buffer_size);
+        fprintf(stderr, "- Total size : %d\n", new_port->buffer_num * new_port->buffer_size);
+    }
+    
+    // Create pool of buffer headers for the output port to consume
+    _camera_pool = mmal_port_pool_create(new_port, new_port->buffer_num, new_port->buffer_size);
+    if ( !_camera_pool ) {
+        vcos_log_error("Failed to create buffer header pool");
+    } else {
+        _userdata.camera_pool = _camera_pool;
+    }
+    
+    //set userdata
+    new_port->userdata = (struct MMAL_PORT_USERDATA_T *)&_userdata;
+    
+    // Enable the camera output port with callback
+    if ((status = mmal_port_enable(new_port, FlashCam::buffer_callback)) != MMAL_SUCCESS) {
+        vcos_log_error("Failed to setup camera output");
+        return EX_SOFTWARE;
+    }
+    
+    // buffer pointer
+    MMAL_BUFFER_HEADER_T *buffer;
+    // number of buffers
+    int qsize = mmal_queue_length(_camera_pool->queue);
+
+    // Send all the buffers to the camera output port
+    for (int i=0; i<qsize; i++) {
+        //get buffer
+        buffer = mmal_queue_get(_camera_pool->queue);
+        
+        if (!buffer)
+            vcos_log_error("Unable to get a required buffer %d from pool queue", i);
+        
+        if (mmal_port_send_buffer(new_port, buffer)!= MMAL_SUCCESS)
+            vcos_log_error("Unable to send a buffer to camera output port (%d)", i);
+    }
+    
+    if (_settings.verbose)
+        fprintf(stderr, "Mode successfully set.\n");
+    
+    return EX_OK;
+}
 
 
 
@@ -692,9 +859,9 @@ int FlashCam::setAllParams(FLASHCAM_PARAMS_T *params) {
     if (params->verbose) fprintf(stderr, "Setting:Denoise       :%d\n", params->denoise);
     status += setDenoise(params->denoise);
     
-    //if (_params.verbose) fprintf(stderr, "Setting:Width   - Ignored: metadata\n");    
-    //if (_params.verbose) fprintf(stderr, "Setting:Height  - Ignored: metadata\n");    
-    //if (_params.verbose) fprintf(stderr, "Setting:Verbose - Ignored: metadata\n");    
+    //if (_settings.verbose) fprintf(stderr, "Setting:Width   - Ignored: metadata\n");    
+    //if (_settings.verbose) fprintf(stderr, "Setting:Height  - Ignored: metadata\n");    
+    //if (_settings.verbose) fprintf(stderr, "Setting:Verbose - Ignored: metadata\n");    
     
     return status;
 }
@@ -703,49 +870,49 @@ int FlashCam::getAllParams(FLASHCAM_PARAMS_T *params, bool mem) {
     int status = 0;
     
     if (mem) {
-        if (_params.verbose) fprintf(stderr, "Copying params from memory\n");
+        if (_settings.verbose) fprintf(stderr, "Copying params from memory\n");
         memcpy(params, &_params, sizeof(FLASHCAM_PARAMS_T));
         
     } else {
-        if (_params.verbose) fprintf(stderr, "Getting:Rotation\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Rotation\n");
         status += getRotation( &(params->rotation) );
-        if (_params.verbose) fprintf(stderr, "Getting:AWB\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:AWB\n");
         status += getAWBMode( &(params->awb) );
-        if (_params.verbose) fprintf(stderr, "Getting:Flash\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Flash\n");
         status += getFlashMode( &(params->flash) );
-        if (_params.verbose) fprintf(stderr, "Getting:Mirror\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Mirror\n");
         status += getMirror( &(params->mirror) );
-        if (_params.verbose) fprintf(stderr, "Getting:CameraNum\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:CameraNum\n");
         status += getCameraNum( &(params->cameranum) );
-        if (_params.verbose) fprintf(stderr, "Getting:Exposure\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Exposure\n");
         status += getExposureMode( &(params->exposure) );
-        if (_params.verbose) fprintf(stderr, "Getting:Metering\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Metering\n");
         status += getMeteringMode( &(params->metering) );
-        if (_params.verbose) fprintf(stderr, "Getting:Stabilisation\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Stabilisation\n");
         status += getStabilisation( &(params->stabilisation) );
-        if (_params.verbose) fprintf(stderr, "Getting:DRC\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:DRC\n");
         status += getDRC( &(params->strength) );
-        if (_params.verbose) fprintf(stderr, "Getting:Sharpness\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Sharpness\n");
         status += getSharpness( &(params->sharpness) );
-        if (_params.verbose) fprintf(stderr, "Getting:Contrast\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Contrast\n");
         status += getContrast( &(params->contrast) );
-        if (_params.verbose) fprintf(stderr, "Getting:Brightness\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Brightness\n");
         status += getBrightness( &(params->brightness) );
-        if (_params.verbose) fprintf(stderr, "Getting:Saturation\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Saturation\n");
         status += getSaturation( &(params->saturation) );
-        if (_params.verbose) fprintf(stderr, "Getting:ISO\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:ISO\n");
         status += getISO( &(params->iso) );
-        if (_params.verbose) fprintf(stderr, "Getting:Shutterspeed\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Shutterspeed\n");
         status += getShutterSpeed( &(params->speed) );
-        if (_params.verbose) fprintf(stderr, "Getting:getAWBGains\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:getAWBGains\n");
         status += getAWBGains( &(params->awbgain_red),  &(params->awbgain_blue) );
-        if (_params.verbose) fprintf(stderr, "Getting:Denoise\n");
+        if (_settings.verbose) fprintf(stderr, "Getting:Denoise\n");
         status += getDenoise( &(params->denoise) );
         
         //get metadata
         params->width = _params.width;
         params->height = _params.height;
-        params->verbose = _params.verbose;
+        params->verbose = _settings.verbose;
         params->getsettings = _params.getsettings;
     }
     return status;
@@ -821,7 +988,7 @@ MMAL_STATUS_T FlashCam::getParameterRational( int id, int *val ) {
 /* PUBLIC SETTER/GETTER */
 
 int FlashCam::setRotation ( int rotation ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     rotation = ((rotation % 360 ) / 90) * 90;
     MMAL_STATUS_T status = mmal_port_parameter_set_int32(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], MMAL_PARAMETER_ROTATION, rotation);        
     if ( status == MMAL_SUCCESS ) _params.rotation = rotation;
@@ -829,13 +996,13 @@ int FlashCam::setRotation ( int rotation ) {
 }
 
 int FlashCam::getRotation ( int *rotation ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get_int32(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], MMAL_PARAMETER_ROTATION, rotation);        
     return mmal_status_to_int(status);
 }
 
 int FlashCam::setAWBMode ( MMAL_PARAM_AWBMODE_T awb ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_AWBMODE_T param  = {{MMAL_PARAMETER_AWB_MODE, sizeof(param)}, awb};
     MMAL_STATUS_T            status = mmal_port_parameter_set(_camera_component->control, &param.hdr);   
     if ( status == MMAL_SUCCESS ) _params.awb = awb;
@@ -843,7 +1010,7 @@ int FlashCam::setAWBMode ( MMAL_PARAM_AWBMODE_T awb ) {
 }
 
 int FlashCam::getAWBMode ( MMAL_PARAM_AWBMODE_T *awb ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // MMAL_PARAM_AWBMODE_MAX: just usa a value to allocate `param`
     MMAL_PARAMETER_AWBMODE_T param  = {{MMAL_PARAMETER_AWB_MODE, sizeof(param)}, MMAL_PARAM_AWBMODE_MAX};
     MMAL_STATUS_T            status = mmal_port_parameter_get(_camera_component->control, &param.hdr);
@@ -853,7 +1020,7 @@ int FlashCam::getAWBMode ( MMAL_PARAM_AWBMODE_T *awb ) {
 }
 
 int FlashCam::setFlashMode ( MMAL_PARAM_FLASH_T flash ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_FLASH_T param  = {{MMAL_PARAMETER_FLASH, sizeof(param)}, flash};
     MMAL_STATUS_T          status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     if ( status == MMAL_SUCCESS ) _params.flash = flash;
@@ -861,7 +1028,7 @@ int FlashCam::setFlashMode ( MMAL_PARAM_FLASH_T flash ) {
 }
 
 int FlashCam::getFlashMode ( MMAL_PARAM_FLASH_T *flash ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // MMAL_PARAM_FLASH_MAX: just usa a value to allocate `param`
     MMAL_PARAMETER_FLASH_T param  = {{MMAL_PARAMETER_FLASH, sizeof(param)}, MMAL_PARAM_FLASH_MAX};
     MMAL_STATUS_T          status = mmal_port_parameter_get(_camera_component->control, &param.hdr);
@@ -871,7 +1038,7 @@ int FlashCam::getFlashMode ( MMAL_PARAM_FLASH_T *flash ) {
 }
 
 int FlashCam::setMirror ( MMAL_PARAM_MIRROR_T mirror ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_MIRROR_T param  = {{MMAL_PARAMETER_MIRROR, sizeof(param)}, mirror};
     MMAL_STATUS_T           status = mmal_port_parameter_set(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], &param.hdr);
     if ( status == MMAL_SUCCESS ) _params.mirror = mirror;
@@ -879,7 +1046,7 @@ int FlashCam::setMirror ( MMAL_PARAM_MIRROR_T mirror ) {
 }
 
 int FlashCam::getMirror ( MMAL_PARAM_MIRROR_T *mirror ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // MMAL_PARAM_MIRROR_NONE: just usa a value to allocate `param`
     MMAL_PARAMETER_MIRROR_T param  = {{MMAL_PARAMETER_MIRROR, sizeof(param)}, MMAL_PARAM_MIRROR_NONE};
     MMAL_STATUS_T           status = mmal_port_parameter_get(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], &param.hdr);       
@@ -889,7 +1056,7 @@ int FlashCam::getMirror ( MMAL_PARAM_MIRROR_T *mirror ) {
 }
 
 int FlashCam::setCameraNum ( unsigned int num ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_UINT32_T param  = {{MMAL_PARAMETER_CAMERA_NUM, sizeof(param)}, num};
     MMAL_STATUS_T           status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     if ( status == MMAL_SUCCESS ) _params.cameranum = num;
@@ -897,7 +1064,7 @@ int FlashCam::setCameraNum ( unsigned int num ) {
 }
 
 int FlashCam::getCameraNum ( unsigned int *num ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // MMAL_PARAM_MIRROR_NONE: just usa a value to allocate `param`
     MMAL_PARAMETER_UINT32_T param  = {{MMAL_PARAMETER_CAMERA_NUM, sizeof(param)}, 0};
     MMAL_STATUS_T           status = mmal_port_parameter_get(_camera_component->control, &param.hdr);       
@@ -907,7 +1074,7 @@ int FlashCam::getCameraNum ( unsigned int *num ) {
 }
 
 int FlashCam::setCapture ( int capture ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_set_boolean(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], MMAL_PARAMETER_CAPTURE, capture);
     //value is only needed when taking a snapshot, so it is not tracked in _params
     //if ( status == MMAL_SUCCESS ) _params.capture = capture;
@@ -915,13 +1082,13 @@ int FlashCam::setCapture ( int capture ) {
 }
 
 int FlashCam::getCapture ( int *capture ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get_boolean(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], MMAL_PARAMETER_CAPTURE, capture);   
     return mmal_status_to_int(status);
 }
 
 int FlashCam::setExposureMode ( MMAL_PARAM_EXPOSUREMODE_T exposure ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_EXPOSUREMODE_T param  = {{MMAL_PARAMETER_EXPOSURE_MODE, sizeof(param)}, exposure};
     MMAL_STATUS_T                 status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     if ( status == MMAL_SUCCESS ) _params.exposure = exposure;
@@ -930,7 +1097,7 @@ int FlashCam::setExposureMode ( MMAL_PARAM_EXPOSUREMODE_T exposure ) {
 
 int FlashCam::getExposureMode ( MMAL_PARAM_EXPOSUREMODE_T *exposure ) {
     // MMAL_PARAM_EXPOSUREMODE_MAX: just usa a value to allocate `param`
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_EXPOSUREMODE_T param  = {{MMAL_PARAMETER_EXPOSURE_MODE, sizeof(param)}, MMAL_PARAM_EXPOSUREMODE_MAX};
     MMAL_STATUS_T                 status = mmal_port_parameter_get(_camera_component->control, &param.hdr);       
     //update value
@@ -939,7 +1106,7 @@ int FlashCam::getExposureMode ( MMAL_PARAM_EXPOSUREMODE_T *exposure ) {
 }
 
 int FlashCam::setMeteringMode ( MMAL_PARAM_EXPOSUREMETERINGMODE_T  metering ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_EXPOSUREMETERINGMODE_T param  = {{MMAL_PARAMETER_EXP_METERING_MODE, sizeof(param)}, metering};        
     MMAL_STATUS_T                         status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     if ( status == MMAL_SUCCESS ) _params.metering = metering;
@@ -947,7 +1114,7 @@ int FlashCam::setMeteringMode ( MMAL_PARAM_EXPOSUREMETERINGMODE_T  metering ) {
 }
 
 int FlashCam::getMeteringMode ( MMAL_PARAM_EXPOSUREMETERINGMODE_T *metering ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // MMAL_PARAM_EXPOSUREMETERINGMODE_MAX: just usa a value to allocate `param`
     MMAL_PARAMETER_EXPOSUREMETERINGMODE_T param  = {{MMAL_PARAMETER_EXP_METERING_MODE, sizeof(param)}, MMAL_PARAM_EXPOSUREMETERINGMODE_MAX};
     MMAL_STATUS_T                         status = mmal_port_parameter_get(_camera_component->control, &param.hdr);       
@@ -957,32 +1124,32 @@ int FlashCam::getMeteringMode ( MMAL_PARAM_EXPOSUREMETERINGMODE_T *metering ) {
 }
 
 int FlashCam::setCameraConfig ( MMAL_PARAMETER_CAMERA_CONFIG_T *config ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_set(_camera_component->control, &config->hdr);
     return mmal_status_to_int(status);
 }
 
 int FlashCam::getCameraConfig ( MMAL_PARAMETER_CAMERA_CONFIG_T *config ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get(_camera_component->control, &config->hdr);       
     return mmal_status_to_int(status);
 }
 
 int FlashCam::setStabilisation ( int stabilisation ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_set_boolean(_camera_component->control, MMAL_PARAMETER_VIDEO_STABILISATION, stabilisation);   
     if ( status == MMAL_SUCCESS ) _params.stabilisation = stabilisation;
     return mmal_status_to_int(status);
 }
 
 int FlashCam::getStabilisation ( int *stabilisation ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get_boolean(_camera_component->control, MMAL_PARAMETER_VIDEO_STABILISATION, stabilisation);        
     return mmal_status_to_int(status);
 }
 
 int FlashCam::setDRC ( MMAL_PARAMETER_DRC_STRENGTH_T  strength ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_DRC_T param  = {{MMAL_PARAMETER_DYNAMIC_RANGE_COMPRESSION, sizeof(param)}, strength};
     MMAL_STATUS_T        status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     if ( status == MMAL_SUCCESS ) _params.strength = strength;
@@ -990,7 +1157,7 @@ int FlashCam::setDRC ( MMAL_PARAMETER_DRC_STRENGTH_T  strength ) {
 }
 
 int FlashCam::getDRC ( MMAL_PARAMETER_DRC_STRENGTH_T *strength ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // MMAL_PARAMETER_DRC_STRENGTH_MAX: just usa a value to allocate `param`
     MMAL_PARAMETER_DRC_T param  = {{MMAL_PARAMETER_DYNAMIC_RANGE_COMPRESSION, sizeof(param)}, MMAL_PARAMETER_DRC_STRENGTH_MAX};
     MMAL_STATUS_T        status = mmal_port_parameter_get(_camera_component->control, &param.hdr);  
@@ -1000,7 +1167,7 @@ int FlashCam::getDRC ( MMAL_PARAMETER_DRC_STRENGTH_T *strength ) {
 }
 
 int FlashCam::setSharpness ( int  sharpness ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if ( sharpness < -100 ) sharpness = -100;
     if ( sharpness >  100 ) sharpness =  100;
     MMAL_STATUS_T status = setParameterRational(MMAL_PARAMETER_SHARPNESS, sharpness);
@@ -1009,12 +1176,12 @@ int FlashCam::setSharpness ( int  sharpness ) {
 }
 
 int FlashCam::getSharpness ( int *sharpness ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     return getParameterRational( MMAL_PARAMETER_SHARPNESS, sharpness);        
 }
 
 int FlashCam::setContrast ( int  contrast ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if ( contrast < -100 ) contrast = -100;
     if ( contrast >  100 ) contrast =  100;
     MMAL_STATUS_T status = setParameterRational(MMAL_PARAMETER_CONTRAST, contrast);
@@ -1023,12 +1190,12 @@ int FlashCam::setContrast ( int  contrast ) {
 }
 
 int FlashCam::getContrast ( int *contrast ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     return getParameterRational( MMAL_PARAMETER_CONTRAST, contrast);        
 }
 
 int FlashCam::setBrightness ( int  brightness ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if ( brightness <    0 ) brightness =    0;
     if ( brightness >  100 ) brightness =  100;
     MMAL_STATUS_T status = setParameterRational(MMAL_PARAMETER_BRIGHTNESS, brightness);
@@ -1037,12 +1204,12 @@ int FlashCam::setBrightness ( int  brightness ) {
 }
 
 int FlashCam::getBrightness ( int *brightness ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     return getParameterRational( MMAL_PARAMETER_BRIGHTNESS, brightness);        
 }
 
 int FlashCam::setSaturation ( int  saturation ) {        
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if ( saturation < -100 ) saturation = -100;
     if ( saturation >  100 ) saturation =  100;
     MMAL_STATUS_T status = setParameterRational(MMAL_PARAMETER_SATURATION, saturation);
@@ -1051,12 +1218,12 @@ int FlashCam::setSaturation ( int  saturation ) {
 }
 
 int FlashCam::getSaturation ( int *saturation ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     return getParameterRational( MMAL_PARAMETER_SATURATION, saturation);        
 }
 
 int FlashCam::setISO ( unsigned int  iso ) {        
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if ( iso > 1600 ) iso = 1600;
     MMAL_STATUS_T status = mmal_port_parameter_set_uint32(_camera_component->control, MMAL_PARAMETER_ISO, iso); 
     if ( status == MMAL_SUCCESS ) _params.iso = iso;
@@ -1064,13 +1231,13 @@ int FlashCam::setISO ( unsigned int  iso ) {
 }
 
 int FlashCam::getISO ( unsigned int *iso ) {        
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get_uint32(_camera_component->control, MMAL_PARAMETER_ISO, iso);        
     return mmal_status_to_int(status);
 }
 
 int FlashCam::setShutterSpeed ( unsigned int  speed ) {        
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if ( speed > 330000 ) speed = 330000;
     MMAL_STATUS_T status = mmal_port_parameter_set_uint32(_camera_component->control, MMAL_PARAMETER_SHUTTER_SPEED, speed);  
     if ( status == MMAL_SUCCESS ) _params.speed = speed;
@@ -1078,13 +1245,13 @@ int FlashCam::setShutterSpeed ( unsigned int  speed ) {
 }
 
 int FlashCam::getShutterSpeed ( unsigned int *speed ) {        
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get_uint32(_camera_component->control, MMAL_PARAMETER_SHUTTER_SPEED, speed);        
     return mmal_status_to_int(status);
 }
 
 int FlashCam::setAWBGains ( float red , float blue ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     if (red  < 0.0) red  = 0.0;
     if (red  > 8.0) red  = 8.0;
     if (blue < 0.0) blue = 0.0;
@@ -1105,7 +1272,7 @@ int FlashCam::setAWBGains ( float red , float blue ) {
 }
 
 int FlashCam::getAWBGains ( float *red , float *blue ) { 
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     //recompute gains
     MMAL_RATIONAL_T r, b;        
     r.num = b.num = 0;
@@ -1120,28 +1287,28 @@ int FlashCam::getAWBGains ( float *red , float *blue ) {
 }
 
 int FlashCam::setDenoise ( int  denoise ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_set_boolean(_camera_component->control, MMAL_PARAMETER_STILLS_DENOISE, denoise);     
     if ( status == MMAL_SUCCESS ) _params.denoise = denoise;
     return mmal_status_to_int(status);
 }
 
 int FlashCam::getDenoise ( int *denoise ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_get_boolean(_camera_component->control, MMAL_PARAMETER_STILLS_DENOISE, denoise);        
     return mmal_status_to_int(status);
 }
 
 
 int FlashCam::setChangeEventRequest ( unsigned int id , int  request ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     MMAL_PARAMETER_CHANGE_EVENT_REQUEST_T param  = {{MMAL_PARAMETER_CHANGE_EVENT_REQUEST, sizeof(param)}, id, request};
     MMAL_STATUS_T                         status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     return mmal_status_to_int(status);
 }
 
 int FlashCam::getChangeEventRequest ( unsigned int id , int *request ) {
-    if (( !_camera_component ) || ( _capturing )) return 1;
+    if (( !_camera_component ) || ( _active )) return 1;
     // 0: just usa a value to allocate `param`
     MMAL_PARAMETER_CHANGE_EVENT_REQUEST_T param  = {{MMAL_PARAMETER_CHANGE_EVENT_REQUEST, sizeof(param)}, id, 0};
     MMAL_STATUS_T                         status = mmal_port_parameter_get(_camera_component->control, &param.hdr);  

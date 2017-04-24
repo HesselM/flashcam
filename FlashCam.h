@@ -44,43 +44,57 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 
-/*
- * FLASHCAM_PARAMS_T
- * Tracker of all camera parameters. Can be used externally.
- */
-typedef struct {
-    int rotation;                               // Camera rotation (degrees) : -270 / -180 / -90 / 0 / 90 / 180 / 270;
-    MMAL_PARAM_AWBMODE_T awb;                   // AWB mode. See: MMAL_PARAM_AWBMODE_T;
-    MMAL_PARAM_FLASH_T flash;                   // Flash mode. See: MMAL_PARAM_FLASH_T;
-    MMAL_PARAM_MIRROR_T mirror;                 // Image Mirroring. See: MMAL_PARAM_MIRROR_T;
-    unsigned int cameranum;                     // Index of used camera
-    MMAL_PARAM_EXPOSUREMODE_T exposure;         // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
-    MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
-    int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
-    MMAL_PARAMETER_DRC_STRENGTH_T strength;     // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T
-    int sharpness;                              // Image Sharpness : -100    to    100
-    int contrast;                               // Image Contrast  : -100    to    100
-    int brightness;                             // Image Brightness:    0    to    100
-    int saturation;                             // Image Saturation: -100    to    100
-    unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work; 0=auto)
-    unsigned int speed;                         // Shutterspeed    :    0    to 330000    (microseconds)
-    float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
-    float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
-    int denoise;                                // Image Denoiseing. On (1) or Off (0);
-    
-    //meta params
-    unsigned int width;                         // Width of image
-    unsigned int height;                        // Height of image
-    int verbose;                                // Verbose or not?
-    int getsettings;                            // Get updates from camera when settings are changed?
-    
-} FLASHCAM_PARAMS_T;
+// Mode of FlashCam: it is either setup to do image-capturing, or it streams at a set fps images.
+typedef enum {
+    FLASHCAM_MODE_UNKOWN = 0,
+    FLASHCAM_MODE_VIDEO,
+    FLASHCAM_MODE_CAPTURE
+} FLASHCAM_MODE_T;
 
 // Function pointer for callback:
 //  - unsigned char *frame  : pointer to frame containing frame data
 //  - int width             : width of image
 //  - int height            : height of image
 typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
+
+/*
+ * FLASHCAM_PARAMS_T
+ * Tracker of all camera parameters.
+ */
+typedef struct {
+    int rotation;                               // Camera rotation (degrees) : 0 / 90 / 180 / 270;
+    MMAL_PARAM_AWBMODE_T awbmode;               // AWB mode. See: MMAL_PARAM_AWBMODE_T;
+    MMAL_PARAM_FLASH_T flashmode;               // Flash mode. See: MMAL_PARAM_FLASH_T;
+    MMAL_PARAM_MIRROR_T mirror;                 // Image Mirroring. See: MMAL_PARAM_MIRROR_T;
+    unsigned int cameranum;                     // Index of used camera. 
+    MMAL_PARAM_EXPOSUREMODE_T exposuremode;     // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
+    MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
+    int framerate;                              // Frame rate (fps):   0     to    120
+    int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
+    MMAL_PARAMETER_DRC_STRENGTH_T drc;          // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T;
+    int sharpness;                              // Image Sharpness : -100    to    100
+    int contrast;                               // Image Contrast  : -100    to    100
+    int brightness;                             // Image Brightness:    0    to    100
+    int saturation;                             // Image Saturation: -100    to    100
+    unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work; 0=auto)
+    unsigned int shutterspeed;                  // Shutterspeed    :    0    to 330000    (microseconds; fps in VideoMode)
+    float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+    float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+    int denoise;                                // Image Denoiseing. On (1) or Off (0);
+    
+} FLASHCAM_PARAMS_T;
+
+/*
+ * FLASHCAM_SETTINGS_T
+ * Camera settings. Used when camera is initialized.
+ */
+typedef struct {
+    unsigned int width;                         // Width of image
+    unsigned int height;                        // Height of image
+    int verbose;                                // Verbose or not?
+    int update;                                 // Register for updates from the camera when its internal settings are changed?
+    FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
+} FLASHCAM_SETTINGS_T;
 
 
 class FlashCam 
@@ -95,6 +109,7 @@ private:
      */
     typedef struct {
         FLASHCAM_PARAMS_T   *params;            // Pointer to param set
+        FLASHCAM_SETTINGS_T *settings;          // Pointer to setting set
         MMAL_POOL_T         *camera_pool;       // Pool of buffers for camera
         unsigned char       *framebuffer;       // Buffer for final image   
         unsigned int         framebuffer_size;  // Size of buffer
@@ -104,68 +119,79 @@ private:
     } FLASHCAM_PORT_USERDATA_T;
     
     //private variables
-    bool                        _init;
-    bool                        _capturing;
+    bool                        _initialised;   // Camera initialised?
+    bool                        _active;        // Camera currently active?
     FLASHCAM_PARAMS_T           _params;
+    FLASHCAM_SETTINGS_T         _settings;
     MMAL_COMPONENT_T           *_camera_component;
     MMAL_COMPONENT_T           *_preview_component;
     MMAL_CONNECTION_T          *_preview_connection;
     MMAL_POOL_T                *_camera_pool;
-    FLASHCAM_PORT_USERDATA_T    _userdata;
     unsigned char              *_framebuffer;
+    FLASHCAM_PORT_USERDATA_T    _userdata;
     
     //callbacks for async image/update retrieval
     static void control_callback( MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
     static void buffer_callback(  MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
     
-    //Camera/Preview setup functions
-    MMAL_STATUS_T create_camera_component();
-    MMAL_STATUS_T create_preview_component();
-    void destroy_component( MMAL_COMPONENT_T *component );
+    //Camera setup functions
+    int setupComponents(FLASHCAM_SETTINGS_T *settings);
+    MMAL_STATUS_T setupComponentCamera();
+    MMAL_STATUS_T setupComponentPreview();
+    void destroyComponents();
     
     //misc
     MMAL_STATUS_T setParameterRational( int id , int  val );
     MMAL_STATUS_T getParameterRational( int id , int *val );
-    MMAL_STATUS_T connect_ports( MMAL_PORT_T *output_port , MMAL_PORT_T *input_port , MMAL_CONNECTION_T **connection );
-
-    //dealloc data
-    void release();
+    MMAL_STATUS_T connectPorts( MMAL_PORT_T *output_port , MMAL_PORT_T *input_port , MMAL_CONNECTION_T **connection );
     
-    //initialization function
-    int initCamera(FLASHCAM_PARAMS_T *params);
-    
-    // Set all Camera Parameters
-    // -> Private as it is called by constructor,
-    int setAllParams(FLASHCAM_PARAMS_T *params);
-
 public:
     
     // Constructor 
-    //  - initialize the camera with default or specified parameters
+    //  - initialize the camera with default or specified settings
     FlashCam();
-    FlashCam(FLASHCAM_PARAMS_T *params);
+    FlashCam(FLASHCAM_SETTINGS_T *settings);
     
     // Destructor
     ~FlashCam();
-    
+
     // capture image
-    int capture();
+    int startCapture();
+    int stopCapture();
     
     //callback options --> for when a full frame is received
     void setFrameCallback(FLASHCAM_CALLBACK_T callback);
     void resetFrameCallback();
     
-    // parameter utilities
-    static void getDefaultParams(FLASHCAM_PARAMS_T *params);
-    static void printParams(FLASHCAM_PARAMS_T *params);
-    
-    // retrieve currently set camera parameters
-    int  getAllParams(FLASHCAM_PARAMS_T *params, bool mem);
-    
+
     
     /******************************************/
     /*********   GETTERS / SETTERS  ***********/
     /******************************************/
+    
+    
+    /* Library Settings */
+    
+    // setting utilities
+    TODO static void getDefaultSettings(FLASHCAM_SETTINGS_T *settings);
+    TODO static void printSettings(FLASHCAM_SETTINGS_T *settings);
+
+    // retrieve library settings
+    TODO int setSettings(FLASHCAM_SETTINGS_T *settings);
+    TODO int getSettings(FLASHCAM_SETTINGS_T *settings);
+
+    TODO int setSettingSize( unsigned int  width, unsigned int  height );
+    TODO int getSettingSize( unsigned int *width, unsigned int *height );
+
+    TODO int setSettingVerbose( int  verbose );
+    TODO int getSettingVerbose( int *verbose );
+    
+    TODO int setSettingUpdate( int  update );
+    TODO int getSettingUpdate( int *update );
+    
+    int setSettingMode( FLASHCAM_MODE_T  mode );
+    TODO int getSettingMode( FLASHCAM_MODE_T *mode );
+
     
     /*
      * These MMAL_PARAMS_XXXXXX paramter-values are taken from 
@@ -176,6 +202,13 @@ public:
      *
      */
     
+    // parameter utilities
+    static void getDefaultParams(FLASHCAM_PARAMS_T *params);
+    static void printParams(FLASHCAM_PARAMS_T *params);
+    
+    // set/retrieve currently set camera parameters
+    int setParams(FLASHCAM_PARAMS_T *params);
+    int getParams(FLASHCAM_PARAMS_T *params, bool mem);
     
     /********* mmal/mmal_parameters_camera.h ***********/
 
@@ -323,7 +356,19 @@ public:
     //MMAL_PARAMETER_FACE_TRACK,                /**< Takes a @ref MMAL_PARAMETER_FACE_TRACK_T */
     //MMAL_PARAMETER_DRAW_BOX_FACES_AND_FOCUS,  /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
     //MMAL_PARAMETER_JPEG_Q_FACTOR,             /**< Takes a @ref MMAL_PARAMETER_UINT32_T */
-    //MMAL_PARAMETER_FRAME_RATE,                /**< Takes a @ref MMAL_PARAMETER_FRAME_RATE_T */
+    
+    /* 
+     * Property: MMAL_PARAMETER_FRAME_RATE
+     *      < Takes a @ref MMAL_PARAMETER_FRAME_RATE_T >
+     *
+     * Note: Transformed into rational with base 256
+     *
+     * 0 to 120
+     */
+    int setFrameRate ( int  fps );
+    int getFrameRate ( int *fps );
+    
+    
     //MMAL_PARAMETER_USE_STC,                   /**< Takes a @ref MMAL_PARAMETER_CAMERA_STC_MODE_T */
     //MMAL_PARAMETER_CAMERA_INFO,               /**< Takes a @ref MMAL_PARAMETER_CAMERA_INFO_T */
     
