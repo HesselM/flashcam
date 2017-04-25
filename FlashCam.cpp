@@ -710,35 +710,23 @@ void FlashCam::resetFrameCallback() {
 
 
 
+/* SETTING MANAGEMENT */
 
+void FlashCam::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
+    settings->width     = 640;
+    settings->height    = 480;
+    settings->verbose   = 1;
+    settings->update    = 0;
+    settings->mode      = FLASHCAM_MODE_CAPTURE;
+}
 
-
-
-
-
-
-
-//meta params
-settings->width           = 640;
-settings->height          = 480;
-settings->verbose         = 1;
-settings->update     = 0;
-
-fprintf(stderr, "Width        : %d\n", settings->width);
-fprintf(stderr, "Height       : %d\n", settings->height);
-fprintf(stderr, "Verbose      : %d\n", settings->verbose);
-
-
-
-// setting utilities
-TODO static void getDefaultSettings(FLASHCAM_SETTINGS_T *settings);
-TODO static void printSettings(FLASHCAM_SETTINGS_T *settings);
-
-
-
-
-
-
+void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
+    fprintf(stderr, "Width        : %d\n", settings->width);
+    fprintf(stderr, "Height       : %d\n", settings->height);
+    fprintf(stderr, "Verbose      : %d\n", settings->verbose);
+    fprintf(stderr, "Update       : %d\n", settings->update);
+    fprintf(stderr, "Camera-Mode  : %d\n", settings->mode);
+}
 
 int FlashCam::setSettings(FLASHCAM_SETTINGS_T *settings) {
 
@@ -914,116 +902,6 @@ int FlashCam::getSettingMode( FLASHCAM_MODE_T *mode ) {
 
 /* PARAMETER MANAGEMENT */
 
-int FlashCam::setAllParams(FLASHCAM_PARAMS_T *params) {
-    int status = 0;
-    
-    //set values
-    if (settings->verbose) fprintf(stderr, "Setting:Rotation      :%d\n", params->rotation);        
-    status += setRotation(params->rotation);        
-    if (settings->verbose) fprintf(stderr, "Setting:AWB           :%d\n", params->awbmode);
-    status += setAWBMode(params->awbmode);
-    if (settings->verbose) fprintf(stderr, "Setting:Flash         :%d\n", params->flashmode);
-    status += setFlashMode(params->flashmode);
-    if (settings->verbose) fprintf(stderr, "Setting:Mirror        :%d\n", params->mirror);
-    status += setMirror(params->mirror);
-    //if (settings->verbose) fprintf(stderr, "Setting:CameraNum     :%d\n", params->cameranum);
-    //status += setCameraNum(params->cameranum);
-    if (settings->verbose) fprintf(stderr, "Setting:Exposure      :%d\n", params->exposuremode);
-    status += setExposureMode(params->exposuremode);
-    if (settings->verbose) fprintf(stderr, "Setting:Metering      :%d\n", params->metering);
-    status += setMeteringMode(params->metering);
-    if (settings->verbose) fprintf(stderr, "Setting:Stabilisation :%d\n", params->stabilisation);
-    status += setStabilisation(params->stabilisation);
-    if (settings->verbose) fprintf(stderr, "Setting:DRC           :%d\n", params->drc);
-    status += setDRC(params->drc);
-    if (settings->verbose) fprintf(stderr, "Setting:Sharpness     :%d\n", params->sharpness);
-    status += setSharpness(params->sharpness);
-    if (settings->verbose) fprintf(stderr, "Setting:Contrast      :%d\n", params->contrast);
-    status += setContrast(params->contrast);
-    if (settings->verbose) fprintf(stderr, "Setting:Brightness    :%d\n", params->brightness);
-    status += setBrightness(params->brightness);
-    if (settings->verbose) fprintf(stderr, "Setting:Saturation    :%d\n", params->saturation);
-    status += setSaturation(params->saturation);
-    if (settings->verbose) fprintf(stderr, "Setting:ISO           :%d\n", params->iso);
-    status += setISO(params->iso);
-    if (settings->verbose) fprintf(stderr, "Setting:Shutterspeed  :%d\n", params->shutterspeed);
-    status += setShutterSpeed(params->shutterspeed);
-    if (settings->verbose) fprintf(stderr, "Setting:AWBGains      :%d/%d\n", params->awbgain_red, params->awbgain_blue);
-    status += setAWBGains(params->awbgain_red, params->awbgain_blue);
-    if (settings->verbose) fprintf(stderr, "Setting:Denoise       :%d\n", params->denoise);
-    status += setDenoise(params->denoise);
-        
-    return status;
-}
-
-int FlashCam::getAllParams(FLASHCAM_PARAMS_T *params, bool mem) {
-    int status = 0;
-    
-    if (mem) {
-        if (_settings.verbose) fprintf(stderr, "Copying params from memory\n");
-        memcpy(params, &_params, sizeof(FLASHCAM_PARAMS_T));
-        
-    } else {
-        if (_settings.verbose) fprintf(stderr, "Getting:Rotation\n");
-        status += getRotation( &(params->rotation) );
-        if (_settings.verbose) fprintf(stderr, "Getting:AWB\n");
-        status += getAWBMode( &(params->awbmode) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Flash\n");
-        status += getFlashMode( &(params->flashmode) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Mirror\n");
-        status += getMirror( &(params->mirror) );
-        if (_settings.verbose) fprintf(stderr, "Getting:CameraNum\n");
-        status += getCameraNum( &(params->cameranum) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Exposure\n");
-        status += getExposureMode( &(params->exposuremode) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Metering\n");
-        status += getMeteringMode( &(params->metering) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Stabilisation\n");
-        status += getStabilisation( &(params->stabilisation) );
-        if (_settings.verbose) fprintf(stderr, "Getting:DRC\n");
-        status += getDRC( &(params->drc) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Sharpness\n");
-        status += getSharpness( &(params->sharpness) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Contrast\n");
-        status += getContrast( &(params->contrast) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Brightness\n");
-        status += getBrightness( &(params->brightness) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Saturation\n");
-        status += getSaturation( &(params->saturation) );
-        if (_settings.verbose) fprintf(stderr, "Getting:ISO\n");
-        status += getISO( &(params->iso) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Shutterspeed\n");
-        status += getShutterSpeed( &(params->shutterspeed) );
-        if (_settings.verbose) fprintf(stderr, "Getting:getAWBGains\n");
-        status += getAWBGains( &(params->awbgain_red),  &(params->awbgain_blue) );
-        if (_settings.verbose) fprintf(stderr, "Getting:Denoise\n");
-        status += getDenoise( &(params->denoise) );
-    }
-    return status;
-}
-
-void FlashCam::printParams(FLASHCAM_PARAMS_T *params) {
-    fprintf(stderr, "Rotation     : %d\n", params->rotation);
-    fprintf(stderr, "AWB          : %d\n", params->awbmode);
-    fprintf(stderr, "Flash        : %d\n", params->flashmode);
-    fprintf(stderr, "Mirror       : %d\n", params->mirror);
-    fprintf(stderr, "Camera Num   : %d\n", params->cameranum);
-    fprintf(stderr, "Exposure     : %d\n", params->exposuremode);
-    fprintf(stderr, "Metering     : %d\n", params->metering);
-    fprintf(stderr, "Stabilisation: %d\n", params->stabilisation);
-    fprintf(stderr, "DRC          : %d\n", params->drc);
-    fprintf(stderr, "Sharpness    : %d\n", params->sharpness);
-    fprintf(stderr, "Contrast     : %d\n", params->contrast);
-    fprintf(stderr, "Brightness   : %d\n", params->brightness);
-    fprintf(stderr, "Saturation   : %d\n", params->saturation);
-    fprintf(stderr, "ISO          : %d\n", params->iso);
-    fprintf(stderr, "Shutterspeed : %d\n", params->shutterspeed);
-    fprintf(stderr, "AWB-red      : %d\n", params->awbgain_red);
-    fprintf(stderr, "AWB-blue     : %d\n", params->awbgain_blue);
-    fprintf(stderr, "Denoise      : %d\n", params->denoise);
-    
-}
-
 void FlashCam::getDefaultParams(FLASHCAM_PARAMS_T *params) {
     params->rotation        = 0;
     params->awbmode         = MMAL_PARAM_AWBMODE_AUTO;
@@ -1032,6 +910,7 @@ void FlashCam::getDefaultParams(FLASHCAM_PARAMS_T *params) {
     params->cameranum       = 0;
     params->exposuremode    = MMAL_PARAM_EXPOSUREMODE_AUTO;
     params->metering        = MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE;
+    params->framerate       = VIDEO_FRAME_RATE_NUM;
     params->stabilisation   = 0;
     params->drc             = MMAL_PARAMETER_DRC_STRENGTH_OFF;
     params->sharpness       = 0;
@@ -1045,6 +924,120 @@ void FlashCam::getDefaultParams(FLASHCAM_PARAMS_T *params) {
     params->denoise         = 1;
 }
 
+void FlashCam::printParams(FLASHCAM_PARAMS_T *params) {
+    fprintf(stdout, "Rotation     : %d\n", params->rotation);
+    fprintf(stdout, "AWB          : %d\n", params->awbmode);
+    fprintf(stdout, "Flash        : %d\n", params->flashmode);
+    fprintf(stdout, "Mirror       : %d\n", params->mirror);
+    fprintf(stdout, "Camera Num   : %d\n", params->cameranum);
+    fprintf(stdout, "Exposure     : %d\n", params->exposuremode);
+    fprintf(stdout, "Metering     : %d\n", params->metering);
+    fprintf(stdout, "Framerate    : %d\n", params->framerate);
+    fprintf(stdout, "Stabilisation: %d\n", params->stabilisation);
+    fprintf(stdout, "DRC          : %d\n", params->drc);
+    fprintf(stdout, "Sharpness    : %d\n", params->sharpness);
+    fprintf(stdout, "Contrast     : %d\n", params->contrast);
+    fprintf(stdout, "Brightness   : %d\n", params->brightness);
+    fprintf(stdout, "Saturation   : %d\n", params->saturation);
+    fprintf(stdout, "ISO          : %d\n", params->iso);
+    fprintf(stdout, "Shutterspeed : %d\n", params->shutterspeed);
+    fprintf(stdout, "AWB-red      : %d\n", params->awbgain_red);
+    fprintf(stdout, "AWB-blue     : %d\n", params->awbgain_blue);
+    fprintf(stdout, "Denoise      : %d\n", params->denoise);
+    
+}
+
+int FlashCam::setParams(FLASHCAM_PARAMS_T *params) {
+    int status = 0;
+    
+    //set values
+    if (_settings.verbose) fprintf(stdout, "%s: Rotation      :%d\n", __func__, params->rotation);        
+    status += setRotation(params->rotation);        
+    if (_settings.verbose) fprintf(stdout, "%s: AWB-Mode      :%d\n", __func__, params->awbmode);
+    status += setAWBMode(params->awbmode);
+    if (_settings.verbose) fprintf(stdout, "%s: Flash-Mode    :%d\n", __func__, params->flashmode);
+    status += setFlashMode(params->flashmode);
+    if (_settings.verbose) fprintf(stdout, "%s: Mirror        :%d\n", __func__, params->mirror);
+    status += setMirror(params->mirror);
+    if (_settings.verbose) fprintf(stdout, "%s: CameraNum     :%d - ignored. Set when initialising camera\n", __func__, params->cameranum);
+    //status += setCameraNum(params->cameranum);
+    if (_settings.verbose) fprintf(stdout, "%s: Exposure-Mode :%d\n", __func__, params->exposuremode);
+    status += setExposureMode(params->exposuremode);
+    if (_settings.verbose) fprintf(stdout, "%s: Metering      :%d\n", __func__, params->metering);
+    status += setMeteringMode(params->metering);
+    if (_settings.verbose) fprintf(stdout, "%s: Framerate     :%d\n", __func__, params->framerate);
+    status += setFramerate(params->framerate);
+    if (_settings.verbose) fprintf(stdout, "%s: Stabilisation :%d\n", __func__, params->stabilisation);
+    status += setStabilisation(params->stabilisation);
+    if (_settings.verbose) fprintf(stdout, "%s: DRC           :%d\n", __func__, params->drc);
+    status += setDRC(params->drc);
+    if (_settings.verbose) fprintf(stdout, "%s: Sharpness     :%d\n", __func__, params->sharpness);
+    status += setSharpness(params->sharpness);
+    if (_settings.verbose) fprintf(stdout, "%s: Contrast      :%d\n", __func__, params->contrast);
+    status += setContrast(params->contrast);
+    if (_settings.verbose) fprintf(stdout, "%s: Brightness    :%d\n", __func__, params->brightness);
+    status += setBrightness(params->brightness);
+    if (_settings.verbose) fprintf(stdout, "%s: Saturation    :%d\n", __func__, params->saturation);
+    status += setSaturation(params->saturation);
+    if (_settings.verbose) fprintf(stdout, "%s: ISO           :%d\n", __func__, params->iso);
+    status += setISO(params->iso);
+    if (_settings.verbose) fprintf(stdout, "%s: Shutterspeed  :%d\n", __func__, params->shutterspeed);
+    status += setShutterSpeed(params->shutterspeed);
+    if (_settings.verbose) fprintf(stdout, "%s: AWB-Gains     :%d/%d\n", __func__, params->awbgain_red, params->awbgain_blue);
+    status += setAWBGains(params->awbgain_red, params->awbgain_blue);
+    if (_settings.verbose) fprintf(stdout, "%s: Denoise       :%d\n", __func__, params->denoise);
+    status += setDenoise(params->denoise);
+        
+    return status;
+}
+
+int FlashCam::getParams(FLASHCAM_PARAMS_T *params, bool mem) {
+    int status = 0;
+    
+    if (mem) {
+        if (_settings.verbose) fprintf(stdout, "%s: Copying params from memory\n", __func__ );
+        memcpy(params, &_params, sizeof(FLASHCAM_PARAMS_T));
+        
+    } else {
+        if (_settings.verbose) fprintf(stdout, "%s: Rotation\n", __func__ );
+        status += getRotation( &(params->rotation) );
+        if (_settings.verbose) fprintf(stdout, "%s: AWB-mode\n", __func__ );
+        status += getAWBMode( &(params->awbmode) );
+        if (_settings.verbose) fprintf(stdout, "%s: Flash-mode\n", __func__ );
+        status += getFlashMode( &(params->flashmode) );
+        if (_settings.verbose) fprintf(stdout, "%s: Mirror\n", __func__ );
+        status += getMirror( &(params->mirror) );
+        if (_settings.verbose) fprintf(stdout, "%s: CameraNum\n", __func__ );
+        status += getCameraNum( &(params->cameranum) );
+        if (_settings.verbose) fprintf(stdout, "%s: Exposure-mode\n", __func__ );
+        status += getExposureMode( &(params->exposuremode) );
+        if (_settings.verbose) fprintf(stdout, "%s: Metering\n", __func__ );
+        status += getMeteringMode( &(params->metering) );
+        if (_settings.verbose) fprintf(stdout, "%s: Framerate\n", __func__ );
+        status += getFramerate( &(params->framerate) );
+        if (_settings.verbose) fprintf(stdout, "%s: Stabilisation\n", __func__ );
+        status += getStabilisation( &(params->stabilisation) );
+        if (_settings.verbose) fprintf(stdout, "%s: DRC\n", __func__ );
+        status += getDRC( &(params->drc) );
+        if (_settings.verbose) fprintf(stdout, "%s: Sharpness\n", __func__ );
+        status += getSharpness( &(params->sharpness) );
+        if (_settings.verbose) fprintf(stdout, "%s: Contrast\n", __func__ );
+        status += getContrast( &(params->contrast) );
+        if (_settings.verbose) fprintf(stdout, "%s: Brightness\n", __func__ );
+        status += getBrightness( &(params->brightness) );
+        if (_settings.verbose) fprintf(stdout, "%s: Saturation\n", __func__ );
+        status += getSaturation( &(params->saturation) );
+        if (_settings.verbose) fprintf(stdout, "%s: ISO\n", __func__ );
+        status += getISO( &(params->iso) );
+        if (_settings.verbose) fprintf(stdout, "%s: Shutterspeed\n", __func__ );
+        status += getShutterSpeed( &(params->shutterspeed) );
+        if (_settings.verbose) fprintf(stdout, "%s: getAWBGains\n", __func__ );
+        status += getAWBGains( &(params->awbgain_red),  &(params->awbgain_blue) );
+        if (_settings.verbose) fprintf(stdout, "%s: Denoise\n", __func__ );
+        status += getDenoise( &(params->denoise) );
+    }
+    return status;
+}
 
 /* GENERAL (PRIVATE) SETTER/GETTER */
 
