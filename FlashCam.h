@@ -130,20 +130,21 @@ private:
     unsigned char              *_framebuffer;
     FLASHCAM_PORT_USERDATA_T    _userdata;
     
-    //callbacks for async image/update retrieval
-    static void control_callback( MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
-    static void buffer_callback(  MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
-    
     //Camera setup functions
-    int setupComponents(FLASHCAM_SETTINGS_T *settings);
+    int resetCamera();
+    int setupComponents();
     MMAL_STATUS_T setupComponentCamera();
     MMAL_STATUS_T setupComponentPreview();
     void destroyComponents();
     
+    //callbacks for async image/update retrieval
+    static void control_callback( MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
+    static void buffer_callback(  MMAL_PORT_T *port , MMAL_BUFFER_HEADER_T *buffer );
+    MMAL_STATUS_T connectPorts( MMAL_PORT_T *output_port , MMAL_PORT_T *input_port , MMAL_CONNECTION_T **connection );
+    
     //misc
     MMAL_STATUS_T setParameterRational( int id , int  val );
     MMAL_STATUS_T getParameterRational( int id , int *val );
-    MMAL_STATUS_T connectPorts( MMAL_PORT_T *output_port , MMAL_PORT_T *input_port , MMAL_CONNECTION_T **connection );
     
 public:
     
@@ -176,21 +177,22 @@ public:
     TODO static void getDefaultSettings(FLASHCAM_SETTINGS_T *settings);
     TODO static void printSettings(FLASHCAM_SETTINGS_T *settings);
 
-    // retrieve library settings
-    TODO int setSettings(FLASHCAM_SETTINGS_T *settings);
-    TODO int getSettings(FLASHCAM_SETTINGS_T *settings);
+    // Set/Get library settings
+    // Note: setting implicitly resets/configures camera
+    int setSettings(FLASHCAM_SETTINGS_T *settings);
+    int getSettings(FLASHCAM_SETTINGS_T *settings);
 
-    TODO int setSettingSize( unsigned int  width, unsigned int  height );
-    TODO int getSettingSize( unsigned int *width, unsigned int *height );
+    int setSettingSize( unsigned int  width, unsigned int  height );
+    int getSettingSize( unsigned int *width, unsigned int *height );
 
-    TODO int setSettingVerbose( int  verbose );
-    TODO int getSettingVerbose( int *verbose );
+    int setSettingVerbose( int  verbose );
+    int getSettingVerbose( int *verbose );
     
-    TODO int setSettingUpdate( int  update );
-    TODO int getSettingUpdate( int *update );
+    int setSettingUpdate( int  update );
+    int getSettingUpdate( int *update );
     
     int setSettingMode( FLASHCAM_MODE_T  mode );
-    TODO int getSettingMode( FLASHCAM_MODE_T *mode );
+    int getSettingMode( FLASHCAM_MODE_T *mode );
 
     
     /*
