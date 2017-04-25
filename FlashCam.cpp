@@ -1203,6 +1203,14 @@ int FlashCam::getCameraConfig ( MMAL_PARAMETER_CAMERA_CONFIG_T *config ) {
     return mmal_status_to_int(status);
 }
 
+int FlashCam::setFrameRate ( int  fps ) {
+    
+}
+
+int FlashCam::getFrameRate ( int *fps ) {
+    
+}
+
 int FlashCam::setStabilisation ( int stabilisation ) {
     if (( !_camera_component ) || ( _active )) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_set_boolean(_camera_component->control, MMAL_PARAMETER_VIDEO_STABILISATION, stabilisation);   

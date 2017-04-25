@@ -174,8 +174,8 @@ public:
     /* Library Settings */
     
     // setting utilities
-    TODO static void getDefaultSettings(FLASHCAM_SETTINGS_T *settings);
-    TODO static void printSettings(FLASHCAM_SETTINGS_T *settings);
+    static void getDefaultSettings(FLASHCAM_SETTINGS_T *settings);
+    static void printSettings(FLASHCAM_SETTINGS_T *settings);
 
     // Set/Get library settings
     // Note: setting implicitly resets/configures camera
