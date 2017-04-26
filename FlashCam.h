@@ -69,7 +69,7 @@ typedef struct {
     unsigned int cameranum;                     // Index of used camera. 
     MMAL_PARAM_EXPOSUREMODE_T exposuremode;     // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
     MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
-    int framerate;                              // Frame rate (fps):   0     to    120
+    float framerate;                            // Frame rate (fps):    0.0f to    120.0f
     int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
     MMAL_PARAMETER_DRC_STRENGTH_T drc;          // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T;
     int sharpness;                              // Image Sharpness : -100    to    100
@@ -191,8 +191,8 @@ public:
     int setSettingUpdate( int  update );
     int getSettingUpdate( int *update );
     
-    int setSettingMode( FLASHCAM_MODE_T  mode );
-    int getSettingMode( FLASHCAM_MODE_T *mode );
+    int setSettingCaptureMode( FLASHCAM_MODE_T  mode );
+    int getSettingCaptureMode( FLASHCAM_MODE_T *mode );
 
     
     /*
@@ -307,8 +307,8 @@ public:
      *
      * 1 or 0
      */
-    int setCapture( int  capture );
-    int getCapture( int *capture );
+    int setCapture( MMAL_PORT_T *port, int  capture );
+    int getCapture( MMAL_PORT_T *port, int *capture );
     
     /*
      * Property: MMAL_PARAMETER_EXPOSURE_MODE
@@ -367,8 +367,8 @@ public:
      *
      * 0 to 120
      */
-    int setFrameRate ( int  fps );
-    int getFrameRate ( int *fps );
+    int setFrameRate ( float  fps );
+    int getFrameRate ( float *fps );
     
     
     //MMAL_PARAMETER_USE_STC,                   /**< Takes a @ref MMAL_PARAMETER_CAMERA_STC_MODE_T */
