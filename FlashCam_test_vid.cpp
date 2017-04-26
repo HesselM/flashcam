@@ -56,18 +56,19 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
     //Y.data = (uchar*) &(frame[0]);
     //U.data = (uchar*) &(frame[(w*h*1)>>0]);
     //V.data = (uchar*) &(frame[(w*h*5)>>2]);
-    memcpy(Y.data, &(frame[0])        , w*h);
+    memcpy(Y.data, &(frame[0])         , w*h);
     memcpy(U.data, &(frame[(w*h*1)>>0]), (w>>1)*(h>>1));
     memcpy(V.data, &(frame[(w*h*5)>>2]), (w>>1)*(h>>1));
 
-    
     //timing
     double tick    = cv::getTickCount();
     double elapsed = double ( tick - prev ) / double ( cv::getTickFrequency() ); //time in second
     sum += elapsed;
     frames++;
     prev = tick;
-    fprintf(stdout, "Timing: %f (avg: %f; frames: %d; fps:%f)\n", elapsed, sum/frames, frames, 1.0/(sum/frames));
+    
+    if ((frames % 25) == 0)
+        fprintf(stdout, "Timing: %f (avg: %f; frames: %d; fps:%f)\n", elapsed, sum/frames, frames, 1.0/(sum/frames));
 }
 
 
@@ -84,7 +85,7 @@ int main(int argc, const char **argv) {
     //update params
     settings.width=320;
     settings.height=240;
-    settings.verbose=1;
+    settings.verbose=0;
     settings.update=0;
     settings.mode=FLASHCAM_MODE_VIDEO;
         
@@ -115,9 +116,9 @@ int main(int argc, const char **argv) {
     Y.create( settings.height, settings.width, CV_8UC1 );
     cv::namedWindow( "Y", cv::WINDOW_AUTOSIZE );
     U.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
-    cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
+    //cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
     V.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
-    cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
+    //cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
 
     //init timings
     prev   = cv::getTickCount();
@@ -128,14 +129,14 @@ int main(int argc, const char **argv) {
     camera.startCapture();   
         
     //wait
-    int time = 10;  //total time (seconds) of streaming
-    int fps  =  2;  //refreshrate of window
+    int time = 20;  //total time (seconds) of streaming
+    int fps  =  5;  //refreshrate of window
     
     //refresh loop
     for (int i=0; i<(time*fps); i++) {
         cv::imshow ("Y", Y);
-        cv::imshow ("U", U);
-        cv::imshow ("V", V);
+        //cv::imshow ("U", U);
+        //cv::imshow ("V", V);
         cv::waitKey(1000/fps);
 //        fprintf(stdout, "Refresh: %d\n", i);
     }

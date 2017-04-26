@@ -941,7 +941,7 @@ void FlashCam::printParams(FLASHCAM_PARAMS_T *params) {
     fprintf(stdout, "Camera Num   : %d\n", params->cameranum);
     fprintf(stdout, "Exposure     : %d\n", params->exposuremode);
     fprintf(stdout, "Metering     : %d\n", params->metering);
-    fprintf(stdout, "Framerate    : %d\n", params->framerate);
+    fprintf(stdout, "Framerate    : %f\n", params->framerate);
     fprintf(stdout, "Stabilisation: %d\n", params->stabilisation);
     fprintf(stdout, "DRC          : %d\n", params->drc);
     fprintf(stdout, "Sharpness    : %d\n", params->sharpness);
@@ -1248,8 +1248,9 @@ int FlashCam::setFrameRate ( float  fps ) {
         return mmal_status_to_int(status);
     if ((status = mmal_port_parameter_set(_camera_component->output[MMAL_CAMERA_VIDEO_PORT  ], &param.hdr)) != MMAL_SUCCESS)
         return mmal_status_to_int(status);
-    if ((status = mmal_port_parameter_set(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], &param.hdr)) != MMAL_SUCCESS)
-        return mmal_status_to_int(status);
+    // Do not set capture port: does not have a fps-option
+    //if ((status = mmal_port_parameter_set(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], &param.hdr)) != MMAL_SUCCESS)
+    //    return mmal_status_to_int(status);
     //success
     _params.framerate = fps;
     return mmal_status_to_int(status);
@@ -1261,7 +1262,7 @@ int FlashCam::getFrameRate ( float *fps ) {
     // {0,0}: just usa a value to allocate `param`
     MMAL_PARAMETER_FRAME_RATE_T param  = {{MMAL_PARAMETER_VIDEO_FRAME_RATE, sizeof(param)}, {0,0}};
     //just pick a port: all ports should have equal settings.
-    MMAL_STATUS_T               status = mmal_port_parameter_get(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], &param.hdr);       
+    MMAL_STATUS_T               status = mmal_port_parameter_get(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], &param.hdr);       
     //update value
     *fps  = ((float)param.frame_rate.num) / ((float)param.frame_rate.den) ;
     return mmal_status_to_int(status);
