@@ -1,5 +1,8 @@
 # FlashCam:
-Simulated video streaming Library for a Raspberry Pi Camera utilising a Flash in C++.
+C++ Library for the PiCamera. Can be used for both video capturing and stills. 
+With a 320x240 resolution, video mode is able to reach 120fps on a RPi Zero Wireless.
+
+In progress: addition of flash in both Capture (working) and Video (todo) mode.
 
 Based on:
 - [picamera](https://github.com/waveform80/picamera/)
@@ -7,12 +10,9 @@ Based on:
 - [raspicam](https://github.com/cedricve/raspicam)
 - [raspicam](https://github.com/raspberrypi/userland)
 
-Video streaming with the Raspberry Pi does not allow the use of a flash. This simple library puts the PiCamera in `still`-mode and simulates video streaming: e.g. fast triggering of consecutive snapshots while utilizing the flash. 
-
 Requisites
-- [Crosscompile Environment](https://github.com/HesselM/rpicross_notes)
+- [Crosscompile Environment](https://github.com/HesselM/rpicross_notes) (but native compilation might be working too)
 - [GPIO setup / flash](http://picamera.readthedocs.io/en/latest/recipes2.html?highlight=flash#using-a-flash-with-the-camera)
 
 Optional
-- [OpenCV](https://github.com/HesselM/rpicross_notes)
-
+- [OpenCV](https://github.com/HesselM/rpicross_notes) (used is test-files)
