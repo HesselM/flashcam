@@ -60,17 +60,22 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
 
 int main(int argc, const char **argv) {
     
-    //get default params
+    //get default params & settings
+    FLASHCAM_SETTINGS_T settings = {};
+    FlashCam::getDefaultSettings( &settings );
+    
     FLASHCAM_PARAMS_T params = {};
     FlashCam::getDefaultParams( &params );
-
+    
     //update params
-    params.width=320;
-    params.height=240;
-    params.verbose=0;
+    settings.width=320;
+    settings.height=240;
+    settings.verbose=1;
+    settings.update=1;
+    settings.mode=FLASHCAM_MODE_CAPTURE;
         
     //create camera with params
-    FlashCam camera = FlashCam( &params );
+    FlashCam camera = FlashCam( &settings );
     
     //set callback
     camera.setFrameCallback( &flashcam_callback );
@@ -84,16 +89,19 @@ int main(int argc, const char **argv) {
     camera.setRotation(270);
     
     //get & print params
-    camera.getAllParams( &params , true);   
+    camera.getParams( &params , true);   
     FlashCam::printParams( &params ); 
     
-
+    //get & print params
+    camera.getSettings( &settings);   
+    FlashCam::printSettings( &settings ); 
+    
     //create openCV window
-    Y.create( params.height, params.width, CV_8UC1 );
+    Y.create( settings.height, settings.width, CV_8UC1 );
     cv::namedWindow( "Y", cv::WINDOW_AUTOSIZE );
-    U.create( params.height >> 1, params.width >> 1, CV_8UC1 );
+    U.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
     cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
-    V.create( params.height >> 1, params.width >> 1, CV_8UC1 );
+    V.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
     cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
 
     double start   = 0;
@@ -105,7 +113,7 @@ int main(int argc, const char **argv) {
         start=cv::getTickCount();
         
         //capture image
-        camera.capture();   
+        camera.startCapture();   
         
         elapsed = double ( cv::getTickCount() - start ) / double ( cv::getTickFrequency() ); //time in second
         sum    += elapsed;
