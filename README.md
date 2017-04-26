@@ -47,3 +47,40 @@ RPi~$ cmake -D VIDTEST=ON ~/path/to/repository/flashcam/
 RPi~$ make
 RPi~$ ./flashcam
 ```
+
+# Test results
+
+```
+RPi~$ ./flashcam 
+ -- VIDEO-TEST -- 
+
+Rotation     : 270
+AWB          : 1
+Flash        : 0
+Mirror       : 0
+Camera Num   : 0
+Exposure     : 6
+Metering     : 0
+Framerate    : 120.000000
+Stabilisation: 0
+DRC          : 0
+Sharpness    : 0
+Contrast     : 0
+Brightness   : 50
+Saturation   : 0
+ISO          : 0
+Shutterspeed : 0
+AWB-red      : 0
+AWB-blue     : 0
+Denoise      : 1
+Width        : 640
+Height       : 480
+Verbose      : 0
+Update       : 0
+Camera-Mode  : 1
+
+...
+
+Timing: 0.008139 (avg: 0.008297; frames: 5880; fps:120.522726)
+Timing: 0.007685 (avg: 0.008297; frames: 6000; fps:120.524067)
+```
