@@ -2,11 +2,12 @@ cmake_minimum_required (VERSION 2.8.11)
 
 project(flashcam)
 
+option(VIDTEST "compile for video testing" OFF)
+
 SET(COMPILE_DEFINITIONS -Werror)
 
 set(CMAKE_CXX_FLAGS " -fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_C_FLAGS " -fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
-
 
 #include required packages
 find_package( Threads REQUIRED )
@@ -33,8 +34,13 @@ include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # executables
-add_executable(flashcam FlashCam_test.cpp FlashCam.cpp types.c)
-
+if(VIDTEST)
+    message("Building for video-testing (VIDTEST=ON)")
+    add_executable(flashcam FlashCam_test_vid.cpp FlashCam.cpp types.c)
+else()
+    message("Building for capture-testing (VIDTEST=OFF)")
+    add_executable(flashcam FlashCam_test.cpp FlashCam.cpp types.c)
+endif()
 
 # Libraries
 target_link_libraries(flashcam ${CMAKE_THREAD_LIBS_INIT})

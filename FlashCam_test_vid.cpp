@@ -57,8 +57,8 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
 
 
 int main(int argc, const char **argv) {
-    fprintf(stdout, "\n -- CAPTURE-TEST -- \n\n");
-
+    fprintf(stdout, "\n -- VIDEO-TEST -- \n\n");
+    
     //get default params & settings
     FLASHCAM_SETTINGS_T settings = {};
     FlashCam::getDefaultSettings( &settings );
@@ -72,13 +72,13 @@ int main(int argc, const char **argv) {
     settings.verbose=1;
     settings.update=0;
     settings.mode=FLASHCAM_MODE_CAPTURE;
-        
+    
     //create camera with params
     FlashCam camera = FlashCam( &settings );
     
     //set callback
     camera.setFrameCallback( &flashcam_callback );
-
+    
     //set camera params
     camera.setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
     camera.setShutterSpeed(350);
@@ -102,11 +102,11 @@ int main(int argc, const char **argv) {
     cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
     V.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
     cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
-
+    
     double start   = 0;
     double elapsed = 0;
     double sum     = 0;
-
+    
     for (int i=0; i<10; i++) {
         
         start=cv::getTickCount();
@@ -124,6 +124,6 @@ int main(int argc, const char **argv) {
         cv::imshow ("V", V);
         cv::waitKey(0);
     }
-
+    
     return 0;
 }
