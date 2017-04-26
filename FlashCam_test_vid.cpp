@@ -46,19 +46,34 @@ static cv::Mat Y;
 static cv::Mat U;
 static cv::Mat V;
 
+static double prev;
+static int  frames;
+static double sum;
+
 void flashcam_callback(unsigned char *frame, int w, int h) {
-    fprintf(stderr, "callback: %p (%d x %d)\n", frame, w, h);
+    //fprintf(stdout, "callback: %p (%d x %d)\n", frame, w, h);
     //update opencv image
-    Y.data = (uchar*) &(frame[0]);
-    U.data = (uchar*) &(frame[(w*h*1)>>0]);
-    V.data = (uchar*) &(frame[(w*h*5)>>2]);
+    //Y.data = (uchar*) &(frame[0]);
+    //U.data = (uchar*) &(frame[(w*h*1)>>0]);
+    //V.data = (uchar*) &(frame[(w*h*5)>>2]);
+    memcpy(Y.data, &(frame[0])        , w*h);
+    memcpy(U.data, &(frame[(w*h*1)>>0]), (w>>1)*(h>>1));
+    memcpy(V.data, &(frame[(w*h*5)>>2]), (w>>1)*(h>>1));
+
     
+    //timing
+    double tick    = cv::getTickCount();
+    double elapsed = double ( tick - prev ) / double ( cv::getTickFrequency() ); //time in second
+    sum += elapsed;
+    frames++;
+    prev = tick;
+    fprintf(stdout, "Timing: %f (avg: %f; frames: %d; fps:%f)\n", elapsed, sum/frames, frames, 1.0/(sum/frames));
 }
 
 
 int main(int argc, const char **argv) {
     fprintf(stdout, "\n -- VIDEO-TEST -- \n\n");
-    
+
     //get default params & settings
     FLASHCAM_SETTINGS_T settings = {};
     FlashCam::getDefaultSettings( &settings );
@@ -71,21 +86,22 @@ int main(int argc, const char **argv) {
     settings.height=240;
     settings.verbose=1;
     settings.update=0;
-    settings.mode=FLASHCAM_MODE_CAPTURE;
-    
+    settings.mode=FLASHCAM_MODE_VIDEO;
+        
     //create camera with params
     FlashCam camera = FlashCam( &settings );
     
     //set callback
     camera.setFrameCallback( &flashcam_callback );
-    
+
     //set camera params
     camera.setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
-    camera.setShutterSpeed(350);
-    camera.setFlashMode(MMAL_PARAM_FLASH_ON);
-    camera.setDenoise(0);
-    camera.setISO(800);
+    //camera.setShutterSpeed(350);
+    //camera.setFlashMode(MMAL_PARAM_FLASH_ON);
+    //camera.setDenoise(0);
+    //camera.setISO(800);
     camera.setRotation(270);
+    camera.setFrameRate(120);
     
     //get & print params
     camera.getParams( &params , true);   
@@ -102,28 +118,30 @@ int main(int argc, const char **argv) {
     cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
     V.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
     cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
+
+    //init timings
+    prev   = cv::getTickCount();
+    frames = 0;
+    sum    = 0;
     
-    double start   = 0;
-    double elapsed = 0;
-    double sum     = 0;
+    //start stream image
+    camera.startCapture();   
+        
+    //wait
+    int time = 10;  //total time (seconds) of streaming
+    int fps  =  2;  //refreshrate of window
     
-    for (int i=0; i<10; i++) {
-        
-        start=cv::getTickCount();
-        
-        //capture image
-        camera.startCapture();   
-        
-        elapsed = double ( cv::getTickCount() - start ) / double ( cv::getTickFrequency() ); //time in second
-        sum    += elapsed;
-        
-        fprintf(stderr, "elapsed: %f (avg: %f)\n", elapsed, sum/double(i+1));
-        
+    //refresh loop
+    for (int i=0; i<(time*fps); i++) {
         cv::imshow ("Y", Y);
         cv::imshow ("U", U);
         cv::imshow ("V", V);
-        cv::waitKey(0);
+        cv::waitKey(1000/fps);
+//        fprintf(stdout, "Refresh: %d\n", i);
     }
-    
+
+    //start stream image
+    camera.stopCapture();   
+
     return 0;
 }
