@@ -119,16 +119,16 @@ private:
     } FLASHCAM_PORT_USERDATA_T;
     
     //private variables
-    bool                        _initialised;   // Camera initialised?
-    bool                        _active;        // Camera currently active?
-    FLASHCAM_PARAMS_T           _params;
-    FLASHCAM_SETTINGS_T         _settings;
-    MMAL_COMPONENT_T           *_camera_component;
-    MMAL_COMPONENT_T           *_preview_component;
-    MMAL_CONNECTION_T          *_preview_connection;
-    MMAL_POOL_T                *_camera_pool;
-    unsigned char              *_framebuffer;
-    FLASHCAM_PORT_USERDATA_T    _userdata;
+    bool                        _initialised        = false;    // Camera initialised?
+    bool                        _active             = false;    // Camera currently active?
+    FLASHCAM_PARAMS_T           _params             = {};
+    FLASHCAM_SETTINGS_T         _settings           = {};
+    MMAL_COMPONENT_T           *_camera_component   = NULL;
+    MMAL_COMPONENT_T           *_preview_component  = NULL;
+    MMAL_CONNECTION_T          *_preview_connection = NULL;
+    MMAL_POOL_T                *_camera_pool        = NULL;
+    unsigned char              *_framebuffer        = NULL;
+    FLASHCAM_PORT_USERDATA_T    _userdata           = {};
     
     //Camera setup functions
     int resetCamera();

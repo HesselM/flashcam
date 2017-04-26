@@ -75,14 +75,14 @@ int FlashCam::resetCamera() {
     }
     
     if (_settings.verbose)
-        fprintf(stdout, "%s: Resetting/initializing components.\n", __func__);
+        fprintf(stdout, "%s: (re)setting/initializing components.\n", __func__);
     
     // setup / reset camera (return upon error)
     if (status = setupComponents())
         return status; 
     
     if (_settings.verbose)
-        fprintf(stdout, "%s: Resetting/initializing mode.\n", __func__);
+        fprintf(stdout, "%s: (re)setting/initializing mode.\n", __func__);
     
     // enable / reset selected mode
     if (status = setSettingCaptureMode( _settings.mode ))
@@ -212,7 +212,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     
     // Select Camera
     if ( setCameraNum(_params.cameranum) ) {
-        vcos_log_error("%s: Could not select camera", __func__);
+        vcos_log_error("%s: Could not select camera %d", __func__, _params.cameranum);
         destroyComponents();        
         return MMAL_EINVAL;
     }
@@ -739,7 +739,7 @@ int FlashCam::setSettings(FLASHCAM_SETTINGS_T *settings) {
     memcpy(&_settings, settings, sizeof(FLASHCAM_SETTINGS_T));
 
     if (_settings.verbose)
-        fprintf(stdout, "%s: Resetting camera.\n", __func__);
+        fprintf(stdout, "%s: (re)setting camera.\n", __func__);
 
     //reset camera
     return resetCamera();
@@ -1151,10 +1151,11 @@ int FlashCam::getMirror ( MMAL_PARAM_MIRROR_T *mirror ) {
 }
 
 int FlashCam::setCameraNum ( unsigned int num ) {
-    if (( !_camera_component ) || ( !_initialised )) return 1;
+    //cameranum should be able to set while not (yet) initialised
+    if ( !_camera_component ) return 1;
     MMAL_PARAMETER_UINT32_T param  = {{MMAL_PARAMETER_CAMERA_NUM, sizeof(param)}, num};
     MMAL_STATUS_T           status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
-    if ( status == MMAL_SUCCESS ) _params.cameranum = num;
+    if ( status == MMAL_SUCCESS ) _params.cameranum = num;    
     return mmal_status_to_int(status);
 }
 
@@ -1219,7 +1220,8 @@ int FlashCam::getMeteringMode ( MMAL_PARAM_EXPOSUREMETERINGMODE_T *metering ) {
 }
 
 int FlashCam::setCameraConfig ( MMAL_PARAMETER_CAMERA_CONFIG_T *config ) {
-    if (( !_camera_component ) || ( !_initialised )) return 1;
+    //allow camera configuration even when camera is not (yet) initialised
+    if ( !_camera_component ) return 1;
     MMAL_STATUS_T status = mmal_port_parameter_set(_camera_component->control, &config->hdr);
     return mmal_status_to_int(status);
 }
@@ -1431,7 +1433,8 @@ int FlashCam::getDenoise ( int *denoise ) {
 
 
 int FlashCam::setChangeEventRequest ( unsigned int id , int  request ) {
-    if (( !_camera_component ) || ( !_initialised )) return 1;
+    // allow request even not (yet) initialised
+    if ( !_camera_component ) return 1;
     MMAL_PARAMETER_CHANGE_EVENT_REQUEST_T param  = {{MMAL_PARAMETER_CHANGE_EVENT_REQUEST, sizeof(param)}, id, request};
     MMAL_STATUS_T                         status = mmal_port_parameter_set(_camera_component->control, &param.hdr);
     return mmal_status_to_int(status);

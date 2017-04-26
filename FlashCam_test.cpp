@@ -71,7 +71,7 @@ int main(int argc, const char **argv) {
     settings.width=320;
     settings.height=240;
     settings.verbose=1;
-    settings.update=1;
+    settings.update=0;
     settings.mode=FLASHCAM_MODE_CAPTURE;
         
     //create camera with params
