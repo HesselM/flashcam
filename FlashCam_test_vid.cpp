@@ -37,6 +37,9 @@
  ****************************************************************/
 
 #include "FlashCam.h"
+
+#include <stdlib.h>
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
@@ -83,8 +86,8 @@ int main(int argc, const char **argv) {
     FlashCam::getDefaultParams( &params );
     
     //update params
-    settings.width=320;
-    settings.height=240;
+    settings.width=640;
+    settings.height=480;
     settings.verbose=0;
     settings.update=0;
     settings.mode=FLASHCAM_MODE_VIDEO;
@@ -129,16 +132,19 @@ int main(int argc, const char **argv) {
     camera.startCapture();   
         
     //wait
-    int time = 20;  //total time (seconds) of streaming
+    int show =  0;  //show image with opencv?
+    int time = 20;  //total time (seconds) of streaming/running
     int fps  =  5;  //refreshrate of window
     
     //refresh loop
     for (int i=0; i<(time*fps); i++) {
-        cv::imshow ("Y", Y);
-        //cv::imshow ("U", U);
-        //cv::imshow ("V", V);
-        cv::waitKey(1000/fps);
-//        fprintf(stdout, "Refresh: %d\n", i);
+        if (show) {
+            cv::imshow ("Y", Y);
+            cv::imshow ("U", U);
+            cv::imshow ("V", V);
+            cv::waitKey(1000/fps);
+        } else
+            sleep(1000/fps);
     }
 
     //start stream image
