@@ -70,7 +70,7 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
     frames++;
     prev = tick;
     
-    if ((frames % 25) == 0)
+    if ((frames % 120) == 0)
         fprintf(stdout, "Timing: %f (avg: %f; frames: %d; fps:%f)\n", elapsed, sum/frames, frames, 1.0/(sum/frames));
 }
 
