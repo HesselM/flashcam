@@ -5,13 +5,15 @@ extern "C" {
 }
 
 #include "bcm_host.h"
-
-
 #include "interface/mmal/util/mmal_util.h"
 #include "interface/mmal/util/mmal_util_params.h"
 #include "interface/mmal/util/mmal_default_components.h"
 
 #include <sysexits.h>
+
+#ifdef BUILD_FLASHCAM_WITH_PLL
+#include "FlashCamPLL.h"
+#endif
 
 #define FLASHCAM_VERSION_STRING "v0.1"
 #define DEBUG 1
@@ -458,9 +460,10 @@ void FlashCam::control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
  *  Callback function for buffer-events (that is, camera returned an image)
  */
 void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
-    int abort    = 0; //flag for detecting if we need to abort due to error
-    int complete = 0; //flag for detecting if a full frame is recieved
-    int max_idx  = 0; //flag for detecting if _framebuffer is out of memory
+    int abort           = 0; //flag for detecting if we need to abort due to error
+    int complete        = 0; //flag for detecting if a full frame is recieved
+    int max_idx         = 0; //flag for detecting if _framebuffer is out of memory
+    uint64_t buffertime = 0;
     
     //lock buffer --> callback is async!
     mmal_buffer_header_mem_lock(buffer);
@@ -498,7 +501,6 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                 fprintf(stderr, "V     : %d @ %d\n", length_V, offset_V);   
                 fprintf(stderr, "Total : %d (%d)\n", length_Y + length_U + length_V, buffer->length);   
                  */
-                
                 /*
                 fprintf(stderr, "Buffervalues: \n");
                 fprintf(stderr, "- next      : %p\n", buffer->next);
@@ -509,7 +511,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                 fprintf(stderr, "- flags     : %d\n", buffer->flags);
                 fprintf(stderr, "- pts       : %d\n", buffer->pts);
                 fprintf(stderr, "- dts       : %d\n", buffer->dts);
-                fprintf(stderr, "- type      : %d\n", buffer->type);   
+                fprintf(stderr, "- type      : %d\n", buffer->type);
                  */
             }
             //max index to be written
@@ -538,6 +540,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
         if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_FRAME_END)              
             complete = 1;
         
+        buffertime = buffer->pts;
     } else {
         vcos_log_error("%s: Received a camera still buffer callback with no state", __func__);
     }
@@ -565,6 +568,12 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
     } else if (complete) {
         if (userdata->callback)
             userdata->callback( userdata->framebuffer , userdata->settings->width , userdata->settings->height);
+        
+#ifdef BUILD_FLASHCAM_WITH_PLL
+        if (userdata->settings->pll)
+            FlashCamPLL::update( userdata->settings, userdata->params, buffertime);
+#endif
+        
         //release semaphore
         userdata->framebuffer_idx = 0;
         vcos_semaphore_post(&(userdata->sem_capture));
@@ -608,6 +617,11 @@ int FlashCam::startCapture() {
         fprintf(stdout, "%s: Starting capture\n", __func__);
 
     if (_settings.mode == FLASHCAM_MODE_VIDEO) {
+        
+#ifdef BUILD_FLASHCAM_WITH_PLL
+        if (_settings.pll)
+            FlashCamPLL::start( &_settings, &_params);
+#endif
         
         if (status = setCapture(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], 1)) {
             vcos_log_error("%s: Failed to start video stream", __func__);
@@ -662,6 +676,11 @@ int FlashCam::stopCapture() {
         fprintf(stdout, "%s: Stopping stream.\n", __func__);
     
     if (_settings.mode == FLASHCAM_MODE_VIDEO) {
+        
+#ifdef BUILD_FLASHCAM_WITH_PLL
+        if (_settings.pll)
+            FlashCamPLL::stop();
+#endif
         //stop video
         if (status = setCapture(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], 0)) {
             vcos_log_error("%s: Failed to stop camera", __func__);
@@ -712,7 +731,7 @@ void FlashCam::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->verbose       = 1;
     settings->update        = 0;
     settings->mode          = FLASHCAM_MODE_CAPTURE;
-    settings->pll           = 0;
+    settings->pll           = 1;
     settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
     settings->pll_duty      = 50; // 50% duty cycle
 }

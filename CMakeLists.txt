@@ -7,6 +7,9 @@ option(VIDTEST "compile for video testing" OFF)
 set(CMAKE_CXX_FLAGS "-fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_C_FLAGS   "-fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
 
+# Main sources for FlashCam-lib
+set(FLASHCAM_SOURCES FlashCam.cpp types.c)
+
 #include required packages
 find_package( Threads REQUIRED )
 find_package( PkgConfig REQUIRED )
@@ -24,38 +27,52 @@ pkg_search_module( BCMHOST REQUIRED bcm_host )
 include_directories( ${BCMHOST_INCLUDE_DIRS} )
 link_directories( ${BCMHOST_LIBRARY_DIRS} )
 
-# WiringPi
-#pkg_search_module( WIRINGPI REQUIRED wiringpi )
-#include_directories( ${WIRINGPI_INCLUDE_DIRS} )
-#link_directories( ${WIRINGPI_LIBRARY_DIRS} )
+# WiringPi -> optional (required for PLL)
+pkg_search_module( WIRINGPI wiringpi )
+if (WIRINGPI_FOUND) 
+    message(">> Found WiringPi: including function in build")
+    include_directories( ${WIRINGPI_INCLUDE_DIRS} )
+    link_directories( ${WIRINGPI_LIBRARY_DIRS} )
+    add_definitions( -DBUILD_FLASHCAM_WITH_PLL )
+    set(FLASHCAM_SOURCES FlashCamPLL.cpp; ${FLASHCAM_SOURCES})
+else()
+    message(">> Did not found WiringPi: functions disabled")
+endif()
 
 # Userland -> if not set via commandline or toolchain, set default value.
-if(NOT USERLAND_DIR)
+if (NOT USERLAND_DIR)
+    message(">> Setting default USERLAND_DIR: /usr/src/userland")
     set(USERLAND_DIR "/usr/src/userland")
-endif(NOT USERLAND_DIR)
-
+endif()
 include_directories(${USERLAND_DIR})
 include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 
 # Projectdirs
 include_directories(${CMAKE_SOURCE_DIR})
 
-# executables
+# Which test?
 if(VIDTEST)
-    message("Building for video-testing (VIDTEST=ON)")
-    add_executable(flashcam FlashCam_test_vid.cpp FlashCam.cpp types.c)
+    message(">> Building for video-testing (VIDTEST=ON)")
+    set(FLASHCAM_SOURCES FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
 else()
-    message("Building for capture-testing (VIDTEST=OFF)")
-    add_executable(flashcam FlashCam_test.cpp FlashCam.cpp types.c)
+    message(">> Building for capture-testing (VIDTEST=OFF)")
+    set(FLASHCAM_SOURCES FlashCam_test.cpp; ${FLASHCAM_SOURCES})
 endif()
+
+# Executables
+add_executable(flashcam ${FLASHCAM_SOURCES})
 
 # Libraries
 target_link_libraries(flashcam ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(flashcam ${OpenCV_LIBS} )
 target_link_libraries(flashcam ${MMAL_LIBRARIES})
 target_link_libraries(flashcam ${BCMHOST_LIBRARIES})
-#target_link_libraries(flashcam ${WIRINGPI_LIBRARIES})
 target_link_libraries(flashcam m)
 
-message("Used CXX flags: ${CMAKE_CXX_FLAGS}")
-message("Used C flags: ${CMAKE_C_FLAGS}")
+if (WIRINGPI_FOUND) 
+    target_link_libraries(flashcam ${WIRINGPI_LIBRARIES})
+endif()
+
+message(">> Used CXX flags: \n ${CMAKE_CXX_FLAGS}")
+message(">> Used C flags: \n${CMAKE_C_FLAGS}")
+message(">> Source List: \n${FLASHCAM_SOURCES}")
