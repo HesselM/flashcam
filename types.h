@@ -1,4 +1,3 @@
-
 /**********************************************************
  Software developed by Hessel van der Molen
  Main author Hessel van der Molen (hmolen.science at gmail dot com)
