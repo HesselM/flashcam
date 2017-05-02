@@ -10,8 +10,8 @@ extern "C" {
 #include "interface/mmal/util/mmal_util.h"
 #include "interface/mmal/util/mmal_util_params.h"
 #include "interface/mmal/util/mmal_default_components.h"
-#include <sysexits.h>
 
+#include <sysexits.h>
 
 #define FLASHCAM_VERSION_STRING "v0.1"
 #define DEBUG 1
@@ -46,15 +46,6 @@ FlashCam::FlashCam(){
     setSettings(&_settings); //implicitly resets/configures camera
 }
 
-FlashCam::FlashCam(FLASHCAM_SETTINGS_T *settings){
-    //basic init. 
-    _initialised = false;
-    _active      = false;
-    
-    //init with given parameter set;
-    setSettings(settings); //implicitly resets/configures camera
-}
-
 /*
  * Destructor
  */
@@ -63,8 +54,6 @@ FlashCam::~FlashCam(){
     // delete semaphore
     vcos_semaphore_delete(&_userdata.sem_capture);
 }
-
-
 
 int FlashCam::resetCamera() {
     int status;
@@ -718,11 +707,14 @@ void FlashCam::resetFrameCallback() {
 /* SETTING MANAGEMENT */
 
 void FlashCam::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
-    settings->width     = 640;
-    settings->height    = 480;
-    settings->verbose   = 1;
-    settings->update    = 0;
-    settings->mode      = FLASHCAM_MODE_CAPTURE;
+    settings->width         = 640;
+    settings->height        = 480;
+    settings->verbose       = 1;
+    settings->update        = 0;
+    settings->mode          = FLASHCAM_MODE_CAPTURE;
+    settings->pll           = 0;
+    settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
+    settings->pll_duty      = 50; // 50% duty cycle
 }
 
 void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
@@ -731,6 +723,9 @@ void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stderr, "Verbose      : %d\n", settings->verbose);
     fprintf(stderr, "Update       : %d\n", settings->update);
     fprintf(stderr, "Camera-Mode  : %d\n", settings->mode);
+    fprintf(stderr, "PLL          : %d\n", settings->pll);
+    fprintf(stderr, "PLL-Frequency: %d\n", settings->pll_freq);
+    fprintf(stderr, "PLL-Dutycycle: %d\n", settings->pll_duty);
 }
 
 int FlashCam::setSettings(FLASHCAM_SETTINGS_T *settings) {

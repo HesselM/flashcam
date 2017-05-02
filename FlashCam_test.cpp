@@ -74,25 +74,25 @@ int main(int argc, const char **argv) {
     settings.mode=FLASHCAM_MODE_CAPTURE;
     
     //create camera with params
-    FlashCam camera = FlashCam( &settings );
+    FlashCam::get().setSettings( &settings );
     
     //set callback
-    camera.setFrameCallback( &flashcam_callback );
+    FlashCam::get().setFrameCallback( &flashcam_callback );
     
     //set camera params
-    camera.setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
-    camera.setShutterSpeed(350);
-    camera.setFlashMode(MMAL_PARAM_FLASH_ON);
-    camera.setDenoise(0);
-    camera.setISO(800);
-    camera.setRotation(270);
+    FlashCam::get().setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
+    FlashCam::get().setShutterSpeed(350);
+    FlashCam::get().setFlashMode(MMAL_PARAM_FLASH_ON);
+    FlashCam::get().setDenoise(0);
+    FlashCam::get().setISO(800);
+    FlashCam::get().setRotation(270);
     
     //get & print params
-    camera.getParams( &params , true);   
+    FlashCam::get().getParams( &params , true);   
     FlashCam::printParams( &params ); 
     
     //get & print params
-    camera.getSettings( &settings);   
+    FlashCam::get().getSettings( &settings);   
     FlashCam::printSettings( &settings ); 
     
     //create openCV window
@@ -112,7 +112,7 @@ int main(int argc, const char **argv) {
         start=cv::getTickCount();
         
         //capture image
-        camera.startCapture();   
+        FlashCam::get().startCapture();   
         
         elapsed = double ( cv::getTickCount() - start ) / double ( cv::getTickFrequency() ); //time in second
         sum    += elapsed;

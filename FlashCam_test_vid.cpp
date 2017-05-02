@@ -44,6 +44,7 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <time.h>
+#include <unistd.h>
 
 static cv::Mat Y;
 static cv::Mat U;
@@ -93,26 +94,26 @@ int main(int argc, const char **argv) {
     settings.mode=FLASHCAM_MODE_VIDEO;
         
     //create camera with params
-    FlashCam camera = FlashCam( &settings );
+    FlashCam::get().setSettings( &settings );
     
     //set callback
-    camera.setFrameCallback( &flashcam_callback );
+    FlashCam::get().setFrameCallback( &flashcam_callback );
 
     //set camera params
-    camera.setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
+    FlashCam::get().setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
     //camera.setShutterSpeed(350);
     //camera.setFlashMode(MMAL_PARAM_FLASH_ON);
     //camera.setDenoise(0);
     //camera.setISO(800);
-    camera.setRotation(270);
-    camera.setFrameRate(120);
+    FlashCam::get().setRotation(270);
+    FlashCam::get().setFrameRate(120);
     
     //get & print params
-    camera.getParams( &params , true);   
+    FlashCam::get().getParams( &params , true);   
     FlashCam::printParams( &params ); 
     
     //get & print params
-    camera.getSettings( &settings);   
+    FlashCam::get().getSettings( &settings);   
     FlashCam::printSettings( &settings ); 
     
     //create openCV window
@@ -129,7 +130,7 @@ int main(int argc, const char **argv) {
     sum    = 0;
     
     //start stream image
-    camera.startCapture();   
+    FlashCam::get().startCapture();   
         
     //wait
     int show =  0;  //show image with opencv?
@@ -144,11 +145,11 @@ int main(int argc, const char **argv) {
             cv::imshow ("V", V);
             cv::waitKey(1000/fps);
         } else
-            sleep(1000/fps);
+            usleep(1000000/fps);
     }
 
     //start stream image
-    camera.stopCapture();   
+    FlashCam::get().stopCapture();   
 
     return 0;
 }

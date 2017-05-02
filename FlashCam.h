@@ -94,6 +94,9 @@ typedef struct {
     int verbose;                                // Verbose or not?
     int update;                                 // Register for updates from the camera when its internal settings are changed?
     FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
+    unsigned int pll;                           // Use PLL              : 0 or 1   (on/off)
+    unsigned int pll_freq;                      // Pulse frequency      : 0 to 120 (fps)
+    unsigned int pll_duty;                      // Duty cycle of signal : 0 to 100 (%)
 } FLASHCAM_SETTINGS_T;
 
 
@@ -146,16 +149,26 @@ private:
     MMAL_STATUS_T setParameterRational( int id , int  val );
     MMAL_STATUS_T getParameterRational( int id , int *val );
     
+    
+    
+    // -- SINGLETON --    
+    // Constructor / Destructor
+    FlashCam();
+    ~FlashCam();
+    // Copy & assign overide: not implemented as a singleton cannot have copies.
+    FlashCam(FlashCam const&);
+    void operator=(FlashCam const&);
+    // ---------------
+    
 public:
     
-    // Constructor 
-    //  - initialize the camera with default or specified settings
-    FlashCam();
-    FlashCam(FLASHCAM_SETTINGS_T *settings);
+    // -- SINGLETON --
+    static FlashCam& get() {
+        static FlashCam cam;
+        return cam;
+    }
+    // ---------------
     
-    // Destructor
-    ~FlashCam();
-
     // capture image
     int startCapture();
     int stopCapture();
