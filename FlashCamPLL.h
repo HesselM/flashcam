@@ -44,11 +44,19 @@ class FlashCamPLL
 {
     
 private:
+    bool _error                       = false;
+    FLASHCAM_SETTINGS_PLL_T _settings = {};
     
-public:    
-    static void update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime);
-    static void start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
-    static void stop( FLASHCAM_SETTINGS_T *settings );
+public:   
+    // Constructor / Destructor
+    FlashCamPLL( FLASHCAM_SETTINGS_PLL_T *settings );
+    ~FlashCamPLL();
+
+    int start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
+    int stop( FLASHCAM_SETTINGS_T *settings );
+    
+    static void update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);
+    
     static void getDefaultSettings( FLASHCAM_SETTINGS_PLL_T *settings );
     static void printSettings( FLASHCAM_SETTINGS_PLL_T *settings );
     

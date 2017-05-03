@@ -42,6 +42,10 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 
+#ifdef BUILD_FLASHCAM_WITH_PLL
+#include "FlashCamPLL.h"
+#endif
+
 class FlashCam 
 {
 
@@ -74,6 +78,9 @@ private:
     MMAL_POOL_T                *_camera_pool        = NULL;
     unsigned char              *_framebuffer        = NULL;
     FLASHCAM_PORT_USERDATA_T    _userdata           = {};
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    FlashCamPLL                 _PLL;
+#endif
     
     //Camera setup functions
     int resetCamera();
@@ -149,6 +156,8 @@ public:
     int setSettingCaptureMode( FLASHCAM_MODE_T  mode );
     int getSettingCaptureMode( FLASHCAM_MODE_T *mode );
 
+    int setPLLEnabled( unsigned int  enabled );
+    int getPLLEnabled( unsigned int *enabled );
     
     /*
      * These MMAL_PARAMS_XXXXXX paramter-values are taken from 

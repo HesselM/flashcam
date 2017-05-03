@@ -55,19 +55,77 @@
 #define PLL_PIN 1
 
 
+FlashCamPLL( FLASHCAM_SETTINGS_PLL_T *settings ) {
+    _error   = false;
+    settings = NULL:;
+    
+    // Check if we have root access.. otherwise system will crash!
+    if (getuid()) {
+        fprintf(stderr, "%s: FlashCamPLL/WiringPi requires root. Please run with 'sudo'.\n", __func__);
+        _error = true;
+        
+    //if we are root, init WiringPi
+    } else if (wiringPiSetup () == -1) {
+        fprintf(stderr, "%s: Cannot init WiringPi.\n", __func__);
+        _error = true;
+    }
+    
+    //update settings
+    settings = &_settings;
+    FlashCamPLL::getDefaultSettings(settings);
+}
 
-void FlashCamPLL::update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
+
+
+~FlashCamPLL() {
+    
+    
+}
+
+int FlashCamPLL::update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
     if (settings->verbose)
         fprintf(stdout, "time:%d\n", buffertime);
 }
 
-void FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
+int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
+    
+    if (_error)
+        return 1;
+    
+    if (settings->pll->)
+    
+    //setup PWM pin
+    pinMode( PLL_PIN, PWM_OUTPUT );
+    pwmSetMode( PWM_MODE_MS );
+
     
     
+    //wiringPiISR (1, INT_EDGE_RISING, &pwm_int);
+    int sclock = 19;
+    uint32_t range = 19.2e6/sclock/40 - 19;
+    pwmSetRange (range);
+    pwmWrite (1, 3);
+    struct timespec t1, t2;
+    uint64_t tdiff = 0;
+    int i = 0;
     
     
+    //get lock on starttime
+    do
+    {
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        pwmSetClock (19);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        tdiff = (uint64_t)t2.tv_sec*1000000 + t2.tv_nsec / 1000 - (uint64_t)t1.tv_sec*1000000 - t1.tv_nsec / 1000;
+        ++i;
+    } while (tdiff > 200);
+    std::cout << "tdiff=" << tdiff << "  i=" << i << "\n";
     
+    pwm_start_time = ((uint64_t)t1.tv_sec)*1000000 + t1.tv_nsec / 1000;
+    pwm_period = range*sclock/19.2e6;
     
+    std::this_thread::sleep_for(std::chrono::microseconds(10000));
+    std::thread mmal_thread (start_camera);
 }
 
 void FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings ) {
@@ -77,6 +135,8 @@ void FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings ) {
 }
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_PLL_T *settings) {
+    settings->pll
+    
     settings->pll           = 1;
     settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
     settings->pll_duty      = 50; // 50% duty cycle
