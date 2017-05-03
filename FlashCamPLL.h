@@ -38,7 +38,7 @@
 #ifndef FlashCamPLL_h
 #define FlashCamPLL_h
 
-#include "FlashCam.h"
+#include "types.h"
 
 class FlashCamPLL
 {
@@ -48,7 +48,10 @@ private:
 public:    
     static void update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime);
     static void start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
-    static void stop();
+    static void stop( FLASHCAM_SETTINGS_T *settings );
+    static void getDefaultSettings( FLASHCAM_SETTINGS_PLL_T *settings );
+    static void printSettings( FLASHCAM_SETTINGS_PLL_T *settings );
+    
 };
 
 

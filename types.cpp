@@ -41,14 +41,11 @@
 #include "interface/vcos/vcos.h"
 #include "interface/mmal/mmal_logging.h"
 
-int mmal_status_to_int(MMAL_STATUS_T status)
-{
-    if (status == MMAL_SUCCESS)
+int Status::mmal_to_int(MMAL_STATUS_T status) {
+    if (status == MMAL_SUCCESS) {
         return 0;
-    else
-    {
-        switch (status)
-        {
+    } else {
+        switch (status) {
             case MMAL_ENOMEM :   vcos_log_error("Out of memory"); break;
             case MMAL_ENOSPC :   vcos_log_error("Out of resources (other than memory)"); break;
             case MMAL_EINVAL:    vcos_log_error("Argument is invalid"); break;
@@ -66,7 +63,6 @@ int mmal_status_to_int(MMAL_STATUS_T status)
             case MMAL_EFAULT :   vcos_log_error("Bad address"); break;
             default :            vcos_log_error("Unknown status error"); break;
         }
-        
         return 1;
     }
 }

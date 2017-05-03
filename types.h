@@ -42,13 +42,103 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/mmal_logging.h"
 
-/**
- * Convert a MMAL status return value to a simple boolean of success
- * ALso displays a fault if code is not success
- *
- * @param status The error code to convert
- * @return 0 if status is success, 1 otherwise
+#define FLASHCAM_VERSION_STRING "v0.1"
+#define DEBUG 1
+
+// Standard port setting for the camera component
+#define MMAL_CAMERA_PREVIEW_PORT 0
+#define MMAL_CAMERA_VIDEO_PORT   1
+#define MMAL_CAMERA_CAPTURE_PORT 2
+
+// Stills format information
+// 0 implies variable
+#define PREVIEW_FRAME_RATE_NUM 0
+#define PREVIEW_FRAME_RATE_DEN 1
+#define   VIDEO_FRAME_RATE_NUM 30
+#define   VIDEO_FRAME_RATE_DEN 1
+#define CAPTURE_FRAME_RATE_NUM 0
+#define CAPTURE_FRAME_RATE_DEN 1
+
+//minimum video buffer
+#define VIDEO_OUTPUT_BUFFERS_NUM 3
+
+// Mode of FlashCam: it is either setup to do image-capturing, or it streams at a set fps images.
+typedef enum {
+    FLASHCAM_MODE_UNKOWN = 0,
+    FLASHCAM_MODE_VIDEO,
+    FLASHCAM_MODE_CAPTURE
+} FLASHCAM_MODE_T;
+
+// Function pointer for callback:
+//  - unsigned char *frame  : pointer to frame containing frame data
+//  - int width             : width of image
+//  - int height            : height of image
+typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
+
+/*
+ * FLASHCAM_PARAMS_T
+ * Tracker of all camera parameters.
  */
-int mmal_status_to_int(MMAL_STATUS_T status);
+typedef struct {
+    int rotation;                               // Camera rotation (degrees) : 0 / 90 / 180 / 270;
+    MMAL_PARAM_AWBMODE_T awbmode;               // AWB mode. See: MMAL_PARAM_AWBMODE_T;
+    MMAL_PARAM_FLASH_T flashmode;               // Flash mode. See: MMAL_PARAM_FLASH_T;
+    MMAL_PARAM_MIRROR_T mirror;                 // Image Mirroring. See: MMAL_PARAM_MIRROR_T;
+    unsigned int cameranum;                     // Index of used camera. 
+    MMAL_PARAM_EXPOSUREMODE_T exposuremode;     // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
+    MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
+    float framerate;                            // Frame rate (fps):    0.0f to    120.0f
+    int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
+    MMAL_PARAMETER_DRC_STRENGTH_T drc;          // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T;
+    int sharpness;                              // Image Sharpness : -100    to    100
+    int contrast;                               // Image Contrast  : -100    to    100
+    int brightness;                             // Image Brightness:    0    to    100
+    int saturation;                             // Image Saturation: -100    to    100
+    unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work; 0=auto)
+    unsigned int shutterspeed;                  // Shutterspeed    :    0    to 330000    (microseconds; fps in VideoMode)
+    float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+    float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+    int denoise;                                // Image Denoiseing. On (1) or Off (0);
+    
+} FLASHCAM_PARAMS_T;
+
+/*
+ * FLASHCAM_SETTINGS_T
+ * Camera settings. Used when camera is initialized.
+ */
+typedef struct {
+    unsigned int pll;                           // Use PLL              : 0 or 1   (on/off)
+    unsigned int pll_freq;                      // Pulse frequency      : 0 to 120 (fps)
+    unsigned int pll_duty;                      // Duty cycle of signal : 0 to 100 (%)
+} FLASHCAM_SETTINGS_PLL_T;
+
+/*
+ * FLASHCAM_SETTINGS_T
+ * Camera settings. Used when camera is initialized.
+ */
+typedef struct {
+    unsigned int width;                         // Width of image
+    unsigned int height;                        // Height of image
+    int verbose;                                // Verbose or not?
+    int update;                                 // Register for updates from the camera when its internal settings are changed?
+    FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
+    FLASHCAM_SETTINGS_PLL_T *pll;               // PLL reference (NULL if not available)
+} FLASHCAM_SETTINGS_T;
+
+
+class Status
+{
+private:
+    
+public:
+    /**
+     * Convert a MMAL status return value to a simple boolean of success
+     * ALso displays a fault if code is not success
+     *
+     * @param status The error code to convert
+     * @return 0 if status is success, 1 otherwise
+     */
+    static int mmal_to_int(MMAL_STATUS_T status);
+};
 
 #endif /* types_h */

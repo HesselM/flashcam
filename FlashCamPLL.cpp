@@ -38,6 +38,7 @@
 #include "FlashCamPLL.h"
 #include "FlashCam.h"
 
+#include <stdio.h>
 #include <wiringPi.h>
 
 
@@ -69,8 +70,20 @@ void FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *param
     
 }
 
-void FlashCamPLL::stop() {
+void FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings ) {
     
     
     
+}
+
+void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_PLL_T *settings) {
+    settings->pll           = 1;
+    settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
+    settings->pll_duty      = 50; // 50% duty cycle
+}
+
+void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_PLL_T *settings) {
+    fprintf(stderr, "PLL          : %d\n", settings->pll);
+    fprintf(stderr, "PLL-Frequency: %d\n", settings->pll_freq);
+    fprintf(stderr, "PLL-Dutycycle: %d\n", settings->pll_duty);
 }
