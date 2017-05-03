@@ -49,7 +49,7 @@
 // -> https://pinout.xyz/pinout/gpclk
 // -> https://raspberrypi.stackexchange.com/questions/4906/control-hardware-pwm-frequency
 // -> TODO: function to determine real frequency
-#define RPI_BASE_FREQ 1920000
+#define RPI_BASE_FREQ 19200000
 // WiringPi pin on which PLL-Laser is connected
 // ( equals GPIO-18 = hardware PWM )
 #define PLL_PIN 1
@@ -79,8 +79,8 @@ FlashCamPLL::~FlashCamPLL() {
 }
 
 void FlashCamPLL::update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
-    if (settings->verbose)
-        fprintf(stdout, "time:%d\n", buffertime);
+    //if (settings->verbose)
+        //fprintf(stdout, "time:%d\n", buffertime);
 }
 
 int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
@@ -182,8 +182,8 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             fprintf(stdout, "%s: pwm_clock : %d\n", __func__, pwm_clock);
             fprintf(stdout, "%s: pwm_range : %d\n", __func__, pwm_range);
             fprintf(stdout, "%s: pwm_duty  : %d\n", __func__, pwm_duty);
-            fprintf(stdout, "%s: error     : %f %%\n", __func__, error_percent);
-            fprintf(stdout, "%s: error     : %f ms\n", __func__, error_ms);
+            fprintf(stdout, "%s: error     : %.10f %%\n", __func__, error_percent);
+            fprintf(stdout, "%s: error     : %.10f ms\n", __func__, error_ms);
         }
         
         // Set pwm values
@@ -202,24 +202,33 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         do {
             // get start-time
             clock_gettime(CLOCK_MONOTONIC, &t1);
+
             // set clock
             pwmSetClock(pwm_clock);
             // get finished-time
             clock_gettime(CLOCK_MONOTONIC, &t2);
+
             // compute difference..
-            t1_us = (uint64_t) t1.tv_sec * 1000000 + t1.tv_nsec / 1000;
-            t2_us = (uint64_t) t2.tv_sec * 1000000 + t2.tv_nsec / 1000;
+            t1_us = ((uint64_t) t1.tv_sec) * 1000000 + ((uint64_t) t1.tv_nsec) / 1000;
+            t2_us = ((uint64_t) t2.tv_sec) * 1000000 + ((uint64_t) t2.tv_nsec) / 1000;
             tdiff = t2_us - t1_us;
+            
+//            fprintf(stdout, "%s: t1         : %" PRIu64 " us\n", __func__, t1_us);
+//            fprintf(stdout, "%s: t2         : %" PRIu64 " us\n", __func__, t2_us);
+//            fprintf(stdout, "%s: tdiff      : %" PRIu64 " us\n", __func__, tdiff);
+
             //track iterations
             iter++;
-        } while (tdiff < 200);
-        
+        } while (tdiff > 200);
+  
         // started!
-        settings->pll_starttime = t1_us;
+        settings->pll_starttime     = t1_us;
+        settings->pll_startinterval = tdiff;
         _active = true;
         
         if ( settings->verbose ) {
-            fprintf(stdout, "%s: starttime : %d ns\n", __func__, settings->pll_starttime);
+            fprintf(stdout, "%s: starttime : %" PRIu64 "us\n", __func__, settings->pll_starttime);
+            fprintf(stdout, "%s: interval  : %" PRIu64 "us\n", __func__, settings->pll_startinterval);
             fprintf(stdout, "%s: iterations: %d\n", __func__, iter);
         }
             

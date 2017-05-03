@@ -43,6 +43,7 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <time.h>
+#include <unistd.h>
 
 static cv::Mat Y;
 static cv::Mat U;
@@ -75,7 +76,7 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
 
 
 int main(int argc, const char **argv) {
-    fprintf(stdout, "\n -- VIDEO-TEST WITH PLL -- \n\n");
+    fprintf(stdout, "\n -- VIDEO-TEST: PLL -- \n\n");
     
     //get default params & settings
     FLASHCAM_SETTINGS_T settings = {};
@@ -87,31 +88,34 @@ int main(int argc, const char **argv) {
     //update params
     settings.width=640;
     settings.height=480;
-    settings.verbose=0;
+    settings.verbose=1;
     settings.update=0;
     settings.mode=FLASHCAM_MODE_VIDEO;
     
     //create camera with params
-    FlashCam camera = FlashCam( &settings );
+    FlashCam::get().setSettings( &settings );
     
     //set callback
-    camera.setFrameCallback( &flashcam_callback );
+    FlashCam::get().setFrameCallback( &flashcam_callback );
     
     //set camera params
-    camera.setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
+    FlashCam::get().setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
     //camera.setShutterSpeed(350);
     //camera.setFlashMode(MMAL_PARAM_FLASH_ON);
     //camera.setDenoise(0);
     //camera.setISO(800);
-    camera.setRotation(270);
-    camera.setFrameRate(120);
+    FlashCam::get().setRotation(270);
+    FlashCam::get().setFrameRate(120);
+
+    //enable PLL
+    FlashCam::get().setPLLEnabled(1);
     
     //get & print params
-    camera.getParams( &params , true);   
+    FlashCam::get().getParams( &params , true);   
     FlashCam::printParams( &params ); 
     
     //get & print params
-    camera.getSettings( &settings);   
+    FlashCam::get().getSettings( &settings);   
     FlashCam::printSettings( &settings ); 
     
     //create openCV window
@@ -128,11 +132,11 @@ int main(int argc, const char **argv) {
     sum    = 0;
     
     //start stream image
-    camera.startCapture();   
+    FlashCam::get().startCapture();   
     
     //wait
     int show =  0;  //show image with opencv?
-    int time = 20;  //total time (seconds) of streaming/running
+    int time =  10;  //total time (seconds) of streaming/running
     int fps  =  5;  //refreshrate of window
     
     //refresh loop
@@ -143,11 +147,19 @@ int main(int argc, const char **argv) {
             cv::imshow ("V", V);
             cv::waitKey(1000/fps);
         } else
-            sleep(1000/fps);
+            usleep(1000000/fps);
     }
     
     //start stream image
-    camera.stopCapture();   
+    FlashCam::get().stopCapture();   
     
+    //show params
+    FlashCam::get().getParams( &params , true);   
+    FlashCam::printParams( &params ); 
+    //show settings
+    FlashCam::get().getSettings( &settings);   
+    FlashCam::printSettings( &settings ); 
+
+
     return 0;
 }

@@ -508,9 +508,9 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
             unsigned int offset_V = userdata->settings->height * userdata->settings->width * 1.25 + (userdata->framebuffer_idx >> 2);
                                                 
             if (userdata->settings->verbose) {
-                fprintf(stdout, "%s, Copying %d bytes @ %d (%d x %d)\n", 
-                        __func__, buffer->length, userdata->framebuffer_idx, 
-                        userdata->settings->height, userdata->settings->width);
+           //     fprintf(stdout, "%s, Copying %d bytes @ %d (%d x %d)\n", 
+           //             __func__, buffer->length, userdata->framebuffer_idx, 
+            //            userdata->settings->height, userdata->settings->width);
                 
                 /*
                 fprintf(stderr, "Y     : %d @ %d\n", length_Y, offset_Y);   

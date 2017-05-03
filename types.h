@@ -117,6 +117,7 @@ typedef struct {
     unsigned int pll_freq;                      // Pulse frequency      : 0 to 120 (fps)    -> readonly. Internally set when PLL starts (copy from framerate(
     unsigned int pll_duty;                      // Duty cycle of signal : 0 to 100 (%)
     uint64_t pll_starttime;                     // Starttime of PLL                         -> readonly
+    uint64_t pll_startinterval;                 // Interval in which clock is started       -> readonly
 #endif
     
 } FLASHCAM_SETTINGS_T;

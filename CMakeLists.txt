@@ -3,6 +3,7 @@ cmake_minimum_required (VERSION 2.8.11)
 project(flashcam)
 
 option(VIDTEST "compile for video testing" OFF)
+option(PLLTEST "compile for PLL testing" OFF)
 
 set(CMAKE_CXX_FLAGS "-fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_C_FLAGS   "-fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
@@ -51,12 +52,17 @@ include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # Which test?
-if(VIDTEST)
-    message(">> Building for video-testing (VIDTEST=ON)")
-    set(FLASHCAM_SOURCES FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
+if(PLLTEST)
+    message(">> Building for PLL-testing (PLLTEST=ON)")
+    set(FLASHCAM_SOURCES FlashCam_test_PLL.cpp; ${FLASHCAM_SOURCES})
 else()
-    message(">> Building for capture-testing (VIDTEST=OFF)")
-    set(FLASHCAM_SOURCES FlashCam_test.cpp; ${FLASHCAM_SOURCES})
+    if(VIDTEST)
+        message(">> Building for video-testing (VIDTEST=ON)")
+        set(FLASHCAM_SOURCES FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
+    else()
+        message(">> Building for capture-testing (VIDTEST=OFF)")
+        set(FLASHCAM_SOURCES FlashCam_test.cpp; ${FLASHCAM_SOURCES})
+    endif()
 endif()
 
 # Executables
