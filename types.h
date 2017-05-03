@@ -87,7 +87,7 @@ typedef struct {
     unsigned int cameranum;                     // Index of used camera. 
     MMAL_PARAM_EXPOSUREMODE_T exposuremode;     // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
     MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
-    float framerate;                            // Frame rate (fps):    0.0f to    120.0f
+    float framerate;                            // Frame rate (fps):    0.0f to    120.0f   -> Updated to real fps when PLL is enabled.
     int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
     MMAL_PARAMETER_DRC_STRENGTH_T drc;          // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T;
     int sharpness;                              // Image Sharpness : -100    to    100
@@ -99,18 +99,7 @@ typedef struct {
     float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
     float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
     int denoise;                                // Image Denoiseing. On (1) or Off (0);
-    
 } FLASHCAM_PARAMS_T;
-
-/*
- * FLASHCAM_SETTINGS_T
- * Camera settings. Used when camera is initialized.
- */
-typedef struct {
-    unsigned int pll;                           // Use PLL              : 0 or 1   (on/off)
-    unsigned int pll_freq;                      // Pulse frequency      : 0 to 120 (fps)
-    unsigned int pll_duty;                      // Duty cycle of signal : 0 to 100 (%)
-} FLASHCAM_SETTINGS_PLL_T;
 
 /*
  * FLASHCAM_SETTINGS_T
@@ -122,7 +111,13 @@ typedef struct {
     int verbose;                                // Verbose or not?
     int update;                                 // Register for updates from the camera when its internal settings are changed?
     FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
-    FLASHCAM_SETTINGS_PLL_T *pll;               // PLL reference (NULL if not available)
+
+#ifdef BUILD_FLASHCAM_WITH_PLL  
+    unsigned int pll_enabled;                   // Use PLL              : 0 or 1   (off/on) -> readonly, use FlashCam::setPLLEnabled()
+    unsigned int pll_freq;                      // Pulse frequency      : 0 to 120 (fps)    -> readonly, internally set when PLL starts (copy from framerate(
+    unsigned int pll_duty;                      // Duty cycle of signal : 0 to 100 (%)
+#endif
+    
 } FLASHCAM_SETTINGS_T;
 
 

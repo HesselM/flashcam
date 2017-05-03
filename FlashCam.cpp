@@ -54,7 +54,7 @@ FlashCam::FlashCam(){
     _initialised = false;
     _active      = false;
 #ifdef BUILD_FLASHCAM_WITH_PLL
-    _PLL         = new FlashCamPLL(_settings.pll);
+    _PLL         = FlashCamPLL();
 #endif
     
     //init with default parameter set;
@@ -68,9 +68,9 @@ FlashCam::FlashCam(){
 FlashCam::~FlashCam(){
     destroyComponents();
     vcos_semaphore_delete(&_userdata.sem_capture);
-#ifdef BUILD_FLASHCAM_WITH_PLL
-    delete _PLL;
-#endif
+//#ifdef BUILD_FLASHCAM_WITH_PLL
+//    delete _PLL;
+//#endif
 
 }
 
@@ -635,7 +635,10 @@ int FlashCam::startCapture() {
     if (_settings.mode == FLASHCAM_MODE_VIDEO) {
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        _PLL.start( &_settings, &_params);
+        if (_PLL.start( &_settings, &_params)) {
+            fprintf(stderr, "%s: PLL cannot be started.\n", __func__);
+            return Status::mmal_to_int(MMAL_EINVAL);
+        }
 #endif
         
         if (status = setCapture(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], 1)) {
@@ -699,7 +702,10 @@ int FlashCam::stopCapture() {
         }        
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        _PLL.stop(&_settings);
+        if (_PLL.stop( &_settings )) {
+            fprintf(stderr, "%s: PLL cannot be stopped.\n", __func__);
+            return Status::mmal_to_int(MMAL_EINVAL);
+        }
 #endif
         
     } else if ( _settings.mode = FLASHCAM_MODE_CAPTURE ) { 
@@ -747,9 +753,7 @@ void FlashCam::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->update        = 0;
     settings->mode          = FLASHCAM_MODE_CAPTURE;
 #ifdef BUILD_FLASHCAM_WITH_PLL
-    FlashCamPLL::getDefaultSettings(settings->pll);
-#else
-    settings->pll           = NULL;
+    FlashCamPLL::getDefaultSettings(settings);
 #endif    
     
 }
@@ -761,7 +765,7 @@ void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stdout, "Update       : %d\n", settings->update);
     fprintf(stdout, "Camera-Mode  : %d\n", settings->mode);    
 #ifdef BUILD_FLASHCAM_WITH_PLL
-    FlashCamPLL::printSettings(settings->pll);
+    FlashCamPLL::printSettings(settings);
 #endif    
 }
 
@@ -948,13 +952,8 @@ int FlashCam::setPLLEnabled( unsigned int  enabled ) {
     }
 
 #ifdef BUILD_FLASHCAM_WITH_PLL
-    if (settings->pll) {
-        settings->pll->enabled = enabled;
-        return Status::mmal_to_int(MMAL_SUCCESS);
-    } else {
-        fprintf(stderr, "%s: PLL not initialised\n", __func__);
-        return Status::mmal_to_int(MMAL_EINVAL);        
-    }
+    _settings.pll_enabled = enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
 #else
     fprintf(stderr, "%s: Cannot set PLL-mode. PLL not build.\n", __func__);
     return Status::mmal_to_int(MMAL_ENOSYS);
@@ -964,13 +963,8 @@ int FlashCam::setPLLEnabled( unsigned int  enabled ) {
 int FlashCam::getPLLEnabled( unsigned int *enabled ) {
     
 #ifdef BUILD_FLASHCAM_WITH_PLL
-    if (settings->pll) {
-        *enabled = settings->pll->enabled;
-        return Status::mmal_to_int(MMAL_SUCCESS);
-    } else {
-        fprintf(stderr, "%s: PLL not initialised\n", __func__);
-        return Status::mmal_to_int(MMAL_EINVAL);        
-    }
+    *enabled = _settings.pll_enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
 #else
     fprintf(stderr, "%s: Cannot set PLL-mode. PLL not build.\n", __func__);
     return Status::mmal_to_int(MMAL_ENOSYS);
