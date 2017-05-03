@@ -702,7 +702,7 @@ int FlashCam::stopCapture() {
         }        
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        if (_PLL.stop( &_settings )) {
+        if (_PLL.stop( &_settings, &_params )) {
             fprintf(stderr, "%s: PLL cannot be stopped.\n", __func__);
             return Status::mmal_to_int(MMAL_EINVAL);
         }

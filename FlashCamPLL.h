@@ -44,7 +44,8 @@ class FlashCamPLL
 {
     
 private:
-    bool _error                       = false;
+    bool _error  = false;
+    bool _active = false;
     
 public:   
     // Constructor / Destructor
@@ -52,7 +53,7 @@ public:
     ~FlashCamPLL();
 
     int start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
-    int stop( FLASHCAM_SETTINGS_T *settings );
+    int stop(  FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
     
     static void update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);
     

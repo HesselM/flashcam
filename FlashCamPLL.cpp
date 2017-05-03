@@ -55,6 +55,7 @@
 #define PLL_PIN 1
 
 
+
 FlashCamPLL::FlashCamPLL() {
     _error   = false;
     
@@ -73,8 +74,8 @@ FlashCamPLL::FlashCamPLL() {
 
 
 FlashCamPLL::~FlashCamPLL() {
-    
-    
+    //stop pwm
+    pwmWrite(PLL_PIN, 0);    
 }
 
 void FlashCamPLL::update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
@@ -90,72 +91,186 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         return 1;
     }
     
+    if (_active) {
+        fprintf(stderr, "%s: PLL already running\n", __func__);
+        return 1;
+    }
+    
     if (settings->pll_enabled) {
         if (settings->verbose)
-            fprintf(stdout, "%s: FlashCamPLL enabled.\n", __func__);
+            fprintf(stdout, "%s: FlashCamPLL starting..\n", __func__);
 
-        //setup PWM pin
+        // Computations based on:
+        // - https://www.raspberrypi.org/forums/viewtopic.php?p=957382#p957382
+        // - https://pastebin.com/xTH5jnes
+        //
+        // From links:
+        //    1/f = pwm_range * pwm_clock / RPI_BASE_FREQ
+        //
+        // RPI_BASE_FREQ : base frequency of PWM system of RPi. 
+        //                 Assumed to be fixed. Might be adjustable by user??
+        // pwm_range     : is number of bits within a period.
+        // pwm_clock     : dividor for RPI_BASE_FREQ to set proper frequency
+        // pwm_duty      : number of withs within a period that signal is high.
+        //
+        // The given dutycycle (pll_duty) is 0-100% with 1% resolution ==> 100 steps.
+        // Therefore, error of the PWM signal can be described as 100 / pwm_range.
+        //
+        // Maximum frequency of the camera is 120Hz
+        //
+        // According to the datasheets / libraries, maximum values are:
+        // pwm_range     : 32 bits
+        // pwm_clock     : 12 bits (2 - 4095)
+        // pwm_duty      : 32 bits 
+        //
+        // Assuming an error of max 0.01% :
+        // pwm_range = 100/0.01 = 10000
+        //
+        // With f=120Hz  : pwm_clock = RPI_BASE_FREQ / 120 / 10000 ~   16
+        // With f=  1Hz  : pwm_clock = RPI_BASE_FREQ /   1 / 10000 ~ 1920
+        //
+        // So, with pwm_clock=16, we can satisfy the max error for 1 to 120Hz
+        //
+        // Validation:
+        //
+        // pwm_clock = 16
+        // pwm_duty  = 0 to 100  ==> steps = 100
+        //
+        // With f=120Hz  : pwm_range  = RPI_BASE_FREQ / 120 / 16 = 10000
+        //               : error      = steps / pwm_range        = 0.01 %
+        // With f=  1Hz  : pwm_range  = RPI_BASE_FREQ /   1 / 16 = 1200000
+        //               : error      = steps / pwm_range        = 0.000083 %
+        //
+        // error @ dutycycle: +/- 0.083 ms
+        //
+        //
+        // If: 
+        // pwm_clock = 2:
+        //
+        // With f=120Hz  : pwm_range  = RPI_BASE_FREQ / 120 / 2 = 80000
+        //               : error      = steps / pwm_range       = 0.00125 %
+        // With f=  1Hz  : pwm_range  = RPI_BASE_FREQ /   1 / 2 = 9600000
+        //               : error      = steps / pwm_range       = 0.000010 %
+        //
+        // error @ dutycycle: +/- 0.01 ms
+        //
+        // So, it turns out that a clock-dividor of 2 satifies our need easily.
+        
+        // Setup PWM pin
         pinMode( PLL_PIN, PWM_OUTPUT );
-        pwmSetMode( PWM_MODE_MS );
+        // We do not want the balanced-pwm mode.
+        pwmSetMode( PWM_MODE_MS );        
+        // Set targeted fps
+        settings->pll_freq = params->framerate;
+        
+        // clock & range
+        unsigned int pwm_clock = 2;
+        unsigned int pwm_range = ( RPI_BASE_FREQ / settings->pll_freq ) / pwm_clock; 
+        
+        // Limit duty cycle
+        if ( settings->pll_duty > 100) 
+            settings->pll_duty = 100;
+        // Compute PWM-dutycycle
+        unsigned int pwm_duty  = pwm_range / settings->pll_duty; 
+        
+        // Show computations?
+        if ( settings->verbose ) {
+            float error_percent = 100.0f / pwm_range; 
+            float error_ms      = (error_percent / settings->pll_freq) * 1000.0f;
+            fprintf(stdout, "%s: frequency : %d\n", __func__, settings->pll_freq);
+            fprintf(stdout, "%s: dutycycle : %d %%\n", __func__, settings->pll_duty);
+            fprintf(stdout, "%s: pwm_clock : %d\n", __func__, pwm_clock);
+            fprintf(stdout, "%s: pwm_range : %d\n", __func__, pwm_range);
+            fprintf(stdout, "%s: pwm_duty  : %d\n", __func__, pwm_duty);
+            fprintf(stdout, "%s: error     : %f %%\n", __func__, error_percent);
+            fprintf(stdout, "%s: error     : %f ms\n", __func__, error_ms);
+        }
+        
+        // Set pwm values
+        pwmSetRange(pwm_range);
+        pwmWrite(PLL_PIN, pwm_duty);
 
-        
-    /*
-        //wiringPiISR (1, INT_EDGE_RISING, &pwm_int);
-        int sclock = 19;
-        uint32_t range = 19.2e6/sclock/40 - 19;
-        pwmSetRange (range);
-        pwmWrite (1, 3);
+        // Try to get an accurate starttime 
+        // --> we are not in a RTOS, so operations might get interrupted. 
+        // --> keep setting clock (resetting pwm) untill we get an accurate estimate
+        // --> `accurate` ~ 200us
+
+        unsigned int iter = 0;
         struct timespec t1, t2;
-        uint64_t tdiff = 0;
-        int i = 0;
+        uint64_t t1_us, t2_us, tdiff;
         
-        
-        //get lock on starttime
-        do
-        {
+        do {
+            // get start-time
             clock_gettime(CLOCK_MONOTONIC, &t1);
-            pwmSetClock (19);
+            // set clock
+            pwmSetClock(pwm_clock);
+            // get finished-time
             clock_gettime(CLOCK_MONOTONIC, &t2);
-            tdiff = (uint64_t)t2.tv_sec*1000000 + t2.tv_nsec / 1000 - (uint64_t)t1.tv_sec*1000000 - t1.tv_nsec / 1000;
-            ++i;
-        } while (tdiff > 200);
-        std::cout << "tdiff=" << tdiff << "  i=" << i << "\n";
+            // compute difference..
+            t1_us = (uint64_t) t1.tv_sec * 1000000 + t1.tv_nsec / 1000;
+            t2_us = (uint64_t) t2.tv_sec * 1000000 + t2.tv_nsec / 1000;
+            tdiff = t2_us - t1_us;
+            //track iterations
+            iter++;
+        } while (tdiff < 200);
         
-        pwm_start_time = ((uint64_t)t1.tv_sec)*1000000 + t1.tv_nsec / 1000;
-        pwm_period = range*sclock/19.2e6;
+        // started!
+        settings->pll_starttime = t1_us;
+        _active = true;
         
-        std::this_thread::sleep_for(std::chrono::microseconds(10000));
-        std::thread mmal_thread (start_camera);
-     */
+        if ( settings->verbose ) {
+            fprintf(stdout, "%s: starttime : %d ns\n", __func__, settings->pll_starttime);
+            fprintf(stdout, "%s: iterations: %d\n", __func__, iter);
+        }
             
     } else {
         if (settings->verbose)
             fprintf(stdout, "%s: FlashCamPLL disabled.\n", __func__);
     }
     
+    if ( settings->verbose )
+        fprintf(stdout, "%s: Succes.\n", __func__);
+
     return 0;
 }
 
-int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings ) {
+int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
     
     //initialisation error?
     if (_error) {
         fprintf(stderr, "%s: FlashCamPLL incorrectly initialised.\n", __func__);
         return 1;
     }
-
     
+    if (!_active) {
+        fprintf(stderr, "%s: PLL not running\n", __func__);
+        return 1;
+    }
+    
+    if (settings->verbose)
+        fprintf(stdout, "%s: stopping PLL..\n", __func__);
+
+    //stop PWM
+    pwmWrite(PLL_PIN, 0);
+    //reset fps
+    params->framerate = settings->pll_freq;
+    //reset active-flag
+    _active = false;
+    
+    if ( settings->verbose )
+        fprintf(stdout, "%s: Succes.\n", __func__);
+
     return 0;
 }
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->pll_enabled   = 0;
-    settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
+    //settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
     settings->pll_duty      = 50; // 50% duty cycle
 }
 
 void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stderr, "PLL Enabled  : %d\n", settings->pll_enabled);
-    fprintf(stderr, "PLL Frequency: %d\n", settings->pll_freq);
+    //fprintf(stderr, "PLL Frequency: %d\n", settings->pll_freq);
     fprintf(stderr, "PLL Dutycycle: %d\n", settings->pll_duty);
 }
