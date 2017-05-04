@@ -944,13 +944,18 @@ int FlashCam::getSettingCaptureMode( FLASHCAM_MODE_T *mode ) {
     return Status::mmal_to_int(MMAL_SUCCESS);
 }
 
+
+
+
+
+/*** PLL FUNCTIONS ***/
+
 int FlashCam::setPLLEnabled( unsigned int  enabled ) {    
     // Is camera active?
     if (_active) {
         fprintf(stderr, "%s: Cannot change PLL-mode while camera is active\n", __func__);
         return Status::mmal_to_int(MMAL_EINVAL);
     }
-
 #ifdef BUILD_FLASHCAM_WITH_PLL
     _settings.pll_enabled = enabled;
     return Status::mmal_to_int(MMAL_SUCCESS);
@@ -961,16 +966,66 @@ int FlashCam::setPLLEnabled( unsigned int  enabled ) {
 }
 
 int FlashCam::getPLLEnabled( unsigned int *enabled ) {
-    
 #ifdef BUILD_FLASHCAM_WITH_PLL
     *enabled = _settings.pll_enabled;
     return Status::mmal_to_int(MMAL_SUCCESS);
 #else
-    fprintf(stderr, "%s: Cannot set PLL-mode. PLL not build.\n", __func__);
+    fprintf(stderr, "%s: Cannot get PLL-mode. PLL not build.\n", __func__);
     return Status::mmal_to_int(MMAL_ENOSYS);
 #endif        
 }
 
+int FlashCam::setPLLPulseWidth( float  pulsewidth ){    
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change PLL-pulsewidth while camera is active\n", __func__);
+        return Status::mmal_to_int(MMAL_EINVAL);
+    }
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    if (pulsewidth < 0) 
+        pulsewidth = 0;
+    _settings.pll_pulsewidth = pulsewidth;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot set PLL-pulsewidth. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif    
+}
+
+int FlashCam::getPLLPulseWidth( float *pulsewidth ) {
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    *pulsewidth = _settings.pll_pulsewidth;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot get PLL-pulsewidth. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif        
+}
+
+int FlashCam::setPLLDivider( unsigned int  divider ){    
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change PLL-divider while camera is active\n", __func__);
+        return Status::mmal_to_int(MMAL_EINVAL);
+    }
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    _settings.pll_divider = divider;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot set PLL-divider. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif    
+}
+
+int FlashCam::getPLLDivider( unsigned int *divider ) {
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    *divider = _settings.pll_divider;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot get PLL-divider. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif        
+}
 
 /* PARAMETER MANAGEMENT */
 

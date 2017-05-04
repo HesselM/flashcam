@@ -161,35 +161,47 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         // We do not want the balanced-pwm mode.
         pwmSetMode( PWM_MODE_MS );        
         // Set targeted fps
-        settings->pll_freq = params->framerate;
+        settings->pll_freq     = params->framerate;
+        float target_frequency = settings->pll_freq / settings->pll_divider;
         
         // clock & range
         unsigned int pwm_clock = 2;
-        unsigned int pwm_range = ( RPI_BASE_FREQ / (settings->pll_freq / settings->pll_divider) ) / pwm_clock; 
+        unsigned int pwm_range = ( RPI_BASE_FREQ / target_frequency ) / pwm_clock; 
         
-        // Limit duty cycle
-        if ( settings->pll_duty > 100) 
-            settings->pll_duty = 100;
-        // Compute PWM-dutycycle
-        unsigned int pwm_duty  = (pwm_range * settings->pll_duty ) / 100; 
+        // Determine maximum pulse length
+        float target_period = 1000.0f/target_frequency; //ms
         
+        // Limit pulsewidth to period
+        if ( settings->pll_pulsewidth > target_period) 
+            settings->pll_pulsewidth = target_period;
+        if ( settings->pll_pulsewidth < 0) 
+            settings->pll_pulsewidth = 0;        
+        
+        // Map pulsewidth to RPi-range
+        float dutycycle     = settings->pll_pulsewidth / target_period;
+        unsigned int pwm_pw = dutycycle * pwm_range; 
+                
         // Show computations?
-        if ( settings->verbose ) {
-            float error_percent = 100.0f / pwm_range; 
-            float error_ms      = (error_percent / settings->pll_freq) * 1000.0f;
-            fprintf(stdout, "%s: framerate : %f\n", __func__, settings->pll_freq);
-            fprintf(stdout, "%s: frequency : %f\n", __func__, (settings->pll_freq / settings->pll_divider));
-            fprintf(stdout, "%s: dutycycle : %d %%\n", __func__, settings->pll_duty);
-            fprintf(stdout, "%s: pwm_clock : %d\n", __func__, pwm_clock);
-            fprintf(stdout, "%s: pwm_range : %d\n", __func__, pwm_range);
-            fprintf(stdout, "%s: pwm_duty  : %d\n", __func__, pwm_duty);
-            fprintf(stdout, "%s: error     : %.10f %%\n", __func__, error_percent);
-            fprintf(stdout, "%s: error     : %.10f ms\n", __func__, error_ms);
+        if ( settings->verbose ) {            
+            float real_pw  = ( pwm_pw * target_period) / pwm_range;
+            float error    = (settings->pll_pulsewidth - real_pw) / settings->pll_pulsewidth;
+            float accuracy = target_period / pwm_range;
+            
+            fprintf(stdout, "%s: Framerate     : %f\n", __func__, settings->pll_freq);
+            fprintf(stdout, "%s: PWM frequency : %f\n", __func__, target_frequency);
+            fprintf(stdout, "%s: RPi PWM-clock : %d\n", __func__, pwm_clock);
+            fprintf(stdout, "%s: RPi PWM-range : %d\n", __func__, pwm_range);
+            fprintf(stdout, "%s: Dutycycle     : %.6f %%\n", __func__, dutycycle * 100);
+            fprintf(stdout, "%s: PLL pulsewidth: %.6f ms\n", __func__, settings->pll_pulsewidth);
+            fprintf(stdout, "%s: PWM pulsewidth: %d\n", __func__, pwm_pw);
+            fprintf(stdout, "%s:     --> in ms : %.6f ms\n", __func__, real_pw);
+            fprintf(stdout, "%s: Error (pulse) : %.6f %%\n", __func__, error );
+            fprintf(stdout, "%s: Accuracy      : %.6f ms\n", __func__, accuracy );
         }
         
         // Set pwm values
         pwmSetRange(pwm_range);
-        pwmWrite(PLL_PIN, pwm_duty);
+        pwmWrite(PLL_PIN, pwm_pw);
 
         // Try to get an accurate starttime 
         // --> we are not in a RTOS, so operations might get interrupted. 
@@ -274,9 +286,9 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
 }
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
-    settings->pll_enabled   = 0;
-    settings->pll_divider   = 120;    // use camera frequency.
-    settings->pll_duty      = 50;   // 50% duty cycle
+    settings->pll_enabled       = 0;
+    settings->pll_divider       = 1;                            // use camera frequency.
+    settings->pll_pulsewidth    = 0.5f / VIDEO_FRAME_RATE_NUM;  // 50% duty cycle with default framerate
     
     //internals
     settings->pll_freq          = 0;
@@ -285,7 +297,7 @@ void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
 }
 
 void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
-    fprintf(stderr, "PLL Enabled  : %d\n", settings->pll_enabled);
-    fprintf(stderr, "PLL Divider  : %d\n", settings->pll_divider);
-    fprintf(stderr, "PLL Dutycycle: %d\n", settings->pll_duty);
+    fprintf(stderr, "PLL Enabled   : %d\n", settings->pll_enabled);
+    fprintf(stderr, "PLL Divider   : %d\n", settings->pll_divider);
+    fprintf(stderr, "PLL Pulsewidth: %0.5f ms\n", settings->pll_pulsewidth);
 }

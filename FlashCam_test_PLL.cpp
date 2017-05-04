@@ -105,10 +105,18 @@ int main(int argc, const char **argv) {
     //camera.setDenoise(0);
     //camera.setISO(800);
     FlashCam::get().setRotation(270);
-    FlashCam::get().setFrameRate(120);
+    
+    float pll_fps = 30;
+    int   pll_div = 2;
+    //float pll_pw  = 500.0f / (pll_fps / pll_div); //50% dutycycle
+    float pll_pw  = 33.333333; // ms
+    
+    FlashCam::get().setFrameRate(pll_fps);
 
     //enable PLL
     FlashCam::get().setPLLEnabled(1);
+    FlashCam::get().setPLLDivider(pll_div);
+    FlashCam::get().setPLLPulseWidth(pll_pw);
     
     //get & print params
     FlashCam::get().getParams( &params , true);   

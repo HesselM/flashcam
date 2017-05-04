@@ -156,8 +156,15 @@ public:
     int setSettingCaptureMode( FLASHCAM_MODE_T  mode );
     int getSettingCaptureMode( FLASHCAM_MODE_T *mode );
 
+    
+    //PLL
     int setPLLEnabled( unsigned int  enabled );
     int getPLLEnabled( unsigned int *enabled );
+    int setPLLPulseWidth( float  pulsewidth );
+    int getPLLPulseWidth( float *pulsewidth );
+    int setPLLDivider( unsigned int  divider );
+    int getPLLDivider( unsigned int *divider );
+
     
     /*
      * These MMAL_PARAMS_XXXXXX paramter-values are taken from 

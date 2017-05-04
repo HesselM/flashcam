@@ -113,12 +113,16 @@ typedef struct {
     FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
 
 #ifdef BUILD_FLASHCAM_WITH_PLL  
-    unsigned int pll_enabled;                   // Use PLL              : On (1) or Off (0)     -> readonly. Use FlashCam::setPLLEnabled()
-    unsigned int pll_divider;                   // PLL frequency = params.framerate / pll_divider
-    unsigned int pll_duty;                      // Duty cycle of signal : 0   to 100    (%)
-    float pll_freq;                             // INTERNAL VARIABLE. DO NOT USE. [copy of params.framerate]
-    uint64_t pll_starttime;                     // INTERNAL VARIABLE. DO NOT USE. [starttime of PLL in ms]
-    uint64_t pll_startinterval;                 // INTERNAL VARIABLE. DO NOT USE. [Interval in which clock is started]
+    // PLL: Phase Lock Loop ==> Allows the camera (in videomode) to send lightpulse/flash upon frameexposure.
+    //                          The Raspberry firmware only support flash when in capture mode, hence this option.
+    unsigned int pll_enabled;                   // Use PLL          : On (1) or Off (0)
+    unsigned int pll_divider;                   // framerate / pll_divider = frequency of PLL signal
+    float pll_pulsewidth;                       // Pulse width (ms) : 0 to 1/frequency   (NOTE: will be rounded according to available accuracy).
+    
+    //INTERNAL VARIABLES. CANNOT BE SET/READ. USED FOR PLL TRACKING
+    float pll_freq;                             // [copy of params.framerate]
+    uint64_t pll_starttime;                     // [starttime of PLL in ms]
+    uint64_t pll_startinterval;                 // [Interval in which clock is started]
 #endif
     
 } FLASHCAM_SETTINGS_T;
