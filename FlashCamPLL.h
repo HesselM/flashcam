@@ -47,6 +47,9 @@ private:
     bool _error  = false;
     bool _active = false;
     
+    //triggers resetpin. Implemented for debugging purposes. 
+    void resetGPIO();
+    
 public:   
     // Constructor / Destructor
     FlashCamPLL();

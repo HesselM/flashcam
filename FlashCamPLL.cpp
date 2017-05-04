@@ -50,10 +50,13 @@
 // -> https://raspberrypi.stackexchange.com/questions/4906/control-hardware-pwm-frequency
 // -> TODO: function to determine real frequency
 #define RPI_BASE_FREQ 19200000
-// WiringPi pin on which PLL-Laser is connected
+
+// WiringPi pin to which PLL-Laser is connected
 // ( equals GPIO-18 = hardware PWM )
 #define PLL_PIN 1
 
+// WiringPi pin to which reset is connected
+#define RESET_PIN 0
 
 
 FlashCamPLL::FlashCamPLL() {
@@ -69,6 +72,12 @@ FlashCamPLL::FlashCamPLL() {
         fprintf(stderr, "%s: Cannot init WiringPi.\n", __func__);
         _error = true;
     }
+    
+    
+    // Set pin-functions
+    pinMode( PLL_PIN, PWM_OUTPUT );
+    pinMode( RESET_PIN, OUTPUT );
+    resetGPIO();
 }
 
 
@@ -76,6 +85,12 @@ FlashCamPLL::FlashCamPLL() {
 FlashCamPLL::~FlashCamPLL() {
     //stop pwm
     pwmWrite(PLL_PIN, 0);    
+}
+
+void FlashCamPLL::resetGPIO(){
+    digitalWrite(RESET_PIN, 1);
+    usleep(100);
+    digitalWrite(RESET_PIN, 0);
 }
 
 void FlashCamPLL::update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
@@ -155,6 +170,9 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         // error @ dutycycle: +/- 0.01 ms
         //
         // So, it turns out that a clock-dividor of 2 satifies our need easily.
+        
+        //reset GPIO
+        resetGPIO();
         
         // Setup PWM pin
         pinMode( PLL_PIN, PWM_OUTPUT );
