@@ -98,8 +98,6 @@ private:
     MMAL_STATUS_T setParameterRational( int id , int  val );
     MMAL_STATUS_T getParameterRational( int id , int *val );
     
-    
-    
     // -- SINGLETON --    
     // Constructor / Destructor
     FlashCam();

@@ -84,14 +84,13 @@ int main(int argc, const char **argv) {
     
     FLASHCAM_PARAMS_T params = {};
     FlashCam::getDefaultParams( &params );
-    
     //update params
     settings.width=640;
     settings.height=480;
     settings.verbose=1;
     settings.update=0;
     settings.mode=FLASHCAM_MODE_VIDEO;
-    
+
     //create camera with params
     FlashCam::get().setSettings( &settings );
     
@@ -109,7 +108,8 @@ int main(int argc, const char **argv) {
     float pll_fps = 30;
     int   pll_div = 2;
     //float pll_pw  = 500.0f / (pll_fps / pll_div); //50% dutycycle
-    float pll_pw  = 33.333333; // ms
+    //float pll_pw  = 33.333333; // ms
+    float pll_pw  = 0.124; // ms
     
     FlashCam::get().setFrameRate(pll_fps);
 
@@ -167,7 +167,6 @@ int main(int argc, const char **argv) {
     //show settings
     FlashCam::get().getSettings( &settings);   
     FlashCam::printSettings( &settings ); 
-
 
     return 0;
 }

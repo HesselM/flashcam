@@ -205,16 +205,17 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             float error    = (settings->pll_pulsewidth - real_pw) / settings->pll_pulsewidth;
             float accuracy = target_period / pwm_range;
             
-            fprintf(stdout, "%s: Framerate     : %f\n", __func__, settings->pll_freq);
-            fprintf(stdout, "%s: PWM frequency : %f\n", __func__, target_frequency);
-            fprintf(stdout, "%s: RPi PWM-clock : %d\n", __func__, pwm_clock);
-            fprintf(stdout, "%s: RPi PWM-range : %d\n", __func__, pwm_range);
-            fprintf(stdout, "%s: Dutycycle     : %.6f %%\n", __func__, dutycycle * 100);
-            fprintf(stdout, "%s: PLL pulsewidth: %.6f ms\n", __func__, settings->pll_pulsewidth);
-            fprintf(stdout, "%s: PWM pulsewidth: %d\n", __func__, pwm_pw);
-            fprintf(stdout, "%s:     --> in ms : %.6f ms\n", __func__, real_pw);
-            fprintf(stdout, "%s: Error (pulse) : %.6f %%\n", __func__, error );
-            fprintf(stdout, "%s: Accuracy      : %.6f ms\n", __func__, accuracy );
+            fprintf(stdout, "%s: PLL/PWL SETTINGS     : %f\n", __func__, settings->pll_freq);
+            fprintf(stdout, " - Framerate     : %f\n", settings->pll_freq);
+            fprintf(stdout, " - PWM frequency : %f\n", target_frequency);
+            fprintf(stdout, " - RPi PWM-clock : %d\n", pwm_clock);
+            fprintf(stdout, " - RPi PWM-range : %d\n", pwm_range);
+            fprintf(stdout, " - Dutycycle     : %.6f %%\n", dutycycle * 100);
+            fprintf(stdout, " - PLL pulsewidth: %.6f ms\n", settings->pll_pulsewidth);
+            fprintf(stdout, " - PWM pulsewidth: %d\n", pwm_pw);
+            fprintf(stdout, " -     --> in ms : %.6f ms\n", real_pw);
+            fprintf(stdout, " - Error (pulse) : %.6f %%\n", error );
+            fprintf(stdout, " - Accuracy      : %.6f ms\n", accuracy );
         }
         
         // Set pwm values

@@ -59,7 +59,16 @@ FlashCam::FlashCam(){
     
     //init with default parameter set;
     getDefaultSettings(&_settings);
+    
+    //disable verbose as it might confuse user.
+    unsigned int v = _settings.verbose;
+    _settings.verbose = 0;
+    
+    //init with default settings
     setSettings(&_settings); //implicitly resets/configures camera
+    
+    //reset verbose
+    _settings.verbose = v;
 }
 
 /*
@@ -71,8 +80,9 @@ FlashCam::~FlashCam(){
 //#ifdef BUILD_FLASHCAM_WITH_PLL
 //    delete _PLL;
 //#endif
-
 }
+
+
 
 int FlashCam::resetCamera() {
     int status;
@@ -115,7 +125,11 @@ int FlashCam::setupComponents() {
     }
     
     // Only update these settings when initialising for the first time
-    if (!_initialised) {
+    if (!_initialised) {        
+        //print that we are starting
+        if (_settings.verbose)
+            fprintf(stdout, "\n FlashCam Version: %s\n\n", FLASHCAM_VERSION_STRING);
+
         bcm_host_init();
         
         //register to VCOS for logging
@@ -157,9 +171,6 @@ int FlashCam::setupComponents() {
     //Status flags
     MMAL_STATUS_T status        = MMAL_SUCCESS;
         
-    //print that we are starting
-    if (_settings.verbose)
-        fprintf(stdout, "\n FlashCam Version: %s\n\n", FLASHCAM_VERSION_STRING);
         
     //setup camera
     // - internally sets:
