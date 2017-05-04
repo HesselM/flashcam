@@ -165,19 +165,20 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         
         // clock & range
         unsigned int pwm_clock = 2;
-        unsigned int pwm_range = ( RPI_BASE_FREQ / settings->pll_freq ) / pwm_clock; 
+        unsigned int pwm_range = ( RPI_BASE_FREQ / (settings->pll_freq / settings->pll_divider) ) / pwm_clock; 
         
         // Limit duty cycle
         if ( settings->pll_duty > 100) 
             settings->pll_duty = 100;
         // Compute PWM-dutycycle
-        unsigned int pwm_duty  = pwm_range / settings->pll_duty; 
+        unsigned int pwm_duty  = (pwm_range * settings->pll_duty ) / 100; 
         
         // Show computations?
         if ( settings->verbose ) {
             float error_percent = 100.0f / pwm_range; 
             float error_ms      = (error_percent / settings->pll_freq) * 1000.0f;
-            fprintf(stdout, "%s: frequency : %d\n", __func__, settings->pll_freq);
+            fprintf(stdout, "%s: framerate : %f\n", __func__, settings->pll_freq);
+            fprintf(stdout, "%s: frequency : %f\n", __func__, (settings->pll_freq / settings->pll_divider));
             fprintf(stdout, "%s: dutycycle : %d %%\n", __func__, settings->pll_duty);
             fprintf(stdout, "%s: pwm_clock : %d\n", __func__, pwm_clock);
             fprintf(stdout, "%s: pwm_range : %d\n", __func__, pwm_range);
@@ -274,12 +275,17 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->pll_enabled   = 0;
-    //settings->pll_freq      = VIDEO_FRAME_RATE_NUM;
-    settings->pll_duty      = 50; // 50% duty cycle
+    settings->pll_divider   = 120;    // use camera frequency.
+    settings->pll_duty      = 50;   // 50% duty cycle
+    
+    //internals
+    settings->pll_freq          = 0;
+    settings->pll_starttime     = 0;
+    settings->pll_startinterval = 0;
 }
 
 void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stderr, "PLL Enabled  : %d\n", settings->pll_enabled);
-    //fprintf(stderr, "PLL Frequency: %d\n", settings->pll_freq);
+    fprintf(stderr, "PLL Divider  : %d\n", settings->pll_divider);
     fprintf(stderr, "PLL Dutycycle: %d\n", settings->pll_duty);
 }

@@ -113,11 +113,12 @@ typedef struct {
     FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
 
 #ifdef BUILD_FLASHCAM_WITH_PLL  
-    unsigned int pll_enabled;                   // Use PLL              : 0 or 1   (off/on) -> readonly. Use FlashCam::setPLLEnabled()
-    unsigned int pll_freq;                      // Pulse frequency      : 0 to 120 (fps)    -> readonly. Internally set when PLL starts (copy from framerate(
-    unsigned int pll_duty;                      // Duty cycle of signal : 0 to 100 (%)
-    uint64_t pll_starttime;                     // Starttime of PLL                         -> readonly
-    uint64_t pll_startinterval;                 // Interval in which clock is started       -> readonly
+    unsigned int pll_enabled;                   // Use PLL              : On (1) or Off (0)     -> readonly. Use FlashCam::setPLLEnabled()
+    unsigned int pll_divider;                   // PLL frequency = params.framerate / pll_divider
+    unsigned int pll_duty;                      // Duty cycle of signal : 0   to 100    (%)
+    float pll_freq;                             // INTERNAL VARIABLE. DO NOT USE. [copy of params.framerate]
+    uint64_t pll_starttime;                     // INTERNAL VARIABLE. DO NOT USE. [starttime of PLL in ms]
+    uint64_t pll_startinterval;                 // INTERNAL VARIABLE. DO NOT USE. [Interval in which clock is started]
 #endif
     
 } FLASHCAM_SETTINGS_T;

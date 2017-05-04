@@ -38,6 +38,8 @@ RPi~$ ./flashcam
 
 Use `VIDTEST=ON` or `VIDTEST=OFF` (default=`OFF`) to test either the capture or the video mode.
 
+Use `PLLTEST=ON` (overrides `VIDTEST`) to test PLL mode of the video stream. This mode uses the hardware PWM (GPIO18) of the Raspberry Pi to generate a PWM pulse with a configurable duty cycle at the set framerate of the camera. Running the PLL-executable requires `sudo` permissions, hence run as `root` or with `sudo` prepended. 
+
 When compilin native (NOT TESTED!):
 
 ```
