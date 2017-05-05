@@ -40,6 +40,7 @@
 
 #include <stdio.h>
 #include <wiringPi.h>
+#include <math.h>
 
 #include "interface/mmal/util/mmal_util_params.h"
 
@@ -107,36 +108,40 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     uint64_t t_frame_cpu = buffertime + offset;
     
     // number of pulses since starting PPL
-    uint32_t k           = (t_frame_cpu - settings->pll_starttime) / settings->pll_period;
+    uint32_t k           = ((t_frame_cpu - settings->pll_starttime) / settings->pll_period );
     
     // timestamp of last pulse.
     // NOTE: this assumes that the PWM-clock and CPU-clock do not have drift!
     uint64_t t_lastpulse = settings->pll_starttime + (uint64_t)(k * settings->pll_period);
-
+    
     // difference with frame:
     int64_t diff         = t_frame_cpu - t_lastpulse;
     
     // if difference > period/2 ( or 2*difference > period)
     //  --> captured image is too early, hence difference should be negative. 
     //  --> pulse for frame is in the future
-    if ( (diff<<1) > settings->pll_period )
+    if ( (diff*2) > settings->pll_period )
         diff = diff - settings->pll_period;
     
     if (settings->verbose) {
         fprintf(stdout, "cpu    : %" PRIu64 "\n", t_frame_cpu);
         fprintf(stdout, "start  : %" PRIu64 "\n", settings->pll_starttime);
         fprintf(stdout, "running: %" PRIu64 "\n", t_frame_cpu - settings->pll_starttime);
-        fprintf(stdout, "period : %" PRIu64 "\n", settings->pll_period);
+        fprintf(stdout, "period : %f\n", settings->pll_period);
         fprintf(stdout, "k      : %" PRIu32 "\n", k);
         fprintf(stdout, "last   : %" PRIu64 "\n", t_lastpulse);
         fprintf(stdout, "diff   : %" PRId64 "\n", diff);
-
     }
         
     // Error is smaller then the accuracy of the timestamp in which the PWM signal is started.
     //  -> further optimisation is pointless..
-    if ( abs(diff) < settings->pll_startinterval )
+    if ( abs(diff) < settings->pll_startinterval ) {
+        if (settings->verbose) {
+            fprintf(stdout, "lock!  : %" PRId64 "\n", diff);
+        }
+
         return Status::mmal_to_int(MMAL_SUCCESS);
+    }
     
     // if pulse is in the past (diff>0), frame is too late, so speed up, increase fps
     // if pulse is in the future (diff<0), frame is too early, so slow down, decrease fps
@@ -144,13 +149,14 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     // As the sign of `diff` equals the speed up/slow down, we can use a direct computation:
     //  NOTE: a propotional update is done. Large difference have large speed up.
     
-    float d_period_s  = ( diff * (diff / settings->pll_period) ) / 1000000.0f;  //seconds    
+    float d_period_s  = ( diff * fabs(diff / settings->pll_period) ) / 1000000.0f;  //seconds    
     float period_s    = (1.0f / params->framerate) + d_period_s;
     params->framerate =  1.0f / period_s;
        
     
     if (settings->verbose) {
-        fprintf(stdout, "fps    : %f\n", params->framerate);
+        fprintf(stdout, "d_period_s : %f\n", d_period_s);
+        fprintf(stdout, "fps        : %f\n", params->framerate);
     }
     
     //create rationale

@@ -106,7 +106,7 @@ int main(int argc, const char **argv) {
     FlashCam::get().setRotation(270);
     
     float pll_fps = 30;
-    int   pll_div = 2;
+    int   pll_div = 1;
     //float pll_pw  = 500.0f / (pll_fps / pll_div); //50% dutycycle
     //float pll_pw  = 33.333333; // ms
     float pll_pw  = 0.124; // ms
@@ -144,7 +144,7 @@ int main(int argc, const char **argv) {
     
     //wait
     int show =  0;  //show image with opencv?
-    int time =  10;  //total time (seconds) of streaming/running
+    int time =  1;  //total time (seconds) of streaming/running
     int fps  =  5;  //refreshrate of window
     
     //refresh loop
