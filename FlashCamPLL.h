@@ -65,6 +65,7 @@ public:
     //get timeoffset CPU-GPU within tdiff (us) accuracy
     //static int getGPUoffset(MMAL_PORT_T *port, uint64_t *tdiff, unsigned int *max_iter, int64_t *offset) ;
     static int64_t getGPUoffset(MMAL_PORT_T *videoport);
+    static int64_t getGPUoffset(MMAL_PORT_T *videoport, int64_t *err);
     
     //update Lock. This function is a callback from FlashCam when a frame is recieved.
     static int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);

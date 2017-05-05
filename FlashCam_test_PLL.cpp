@@ -144,7 +144,7 @@ int main(int argc, const char **argv) {
     
     //wait
     int show =  0;  //show image with opencv?
-    int time =  1;  //total time (seconds) of streaming/running
+    int time =  5;  //total time (seconds) of streaming/running
     int fps  =  5;  //refreshrate of window
     
     //refresh loop

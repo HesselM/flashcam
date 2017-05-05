@@ -99,9 +99,14 @@ void FlashCamPLL::resetGPIO(){
 }
 
 int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
-
+    //TODO: divider
+    //TODO: fps -> 0
+    //TODO: offset
+    
+    
     // get CPU-GPU offset
-    int64_t offset = FlashCamPLL::getGPUoffset(port);
+    int64_t offset_interval;
+    int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
     
     // get frametimings in CPU & GPU space.
     uint64_t t_frame_gpu = buffertime;
@@ -124,20 +129,20 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         diff = diff - settings->pll_period;
     
     if (settings->verbose) {
-        fprintf(stdout, "cpu    : %" PRIu64 "\n", t_frame_cpu);
-        fprintf(stdout, "start  : %" PRIu64 "\n", settings->pll_starttime);
-        fprintf(stdout, "running: %" PRIu64 "\n", t_frame_cpu - settings->pll_starttime);
-        fprintf(stdout, "period : %f\n", settings->pll_period);
-        fprintf(stdout, "k      : %" PRIu32 "\n", k);
-        fprintf(stdout, "last   : %" PRIu64 "\n", t_lastpulse);
-        fprintf(stdout, "diff   : %" PRId64 "\n", diff);
+    //    fprintf(stdout, "cpu    : %" PRIu64 "\n", t_frame_cpu);
+    //    fprintf(stdout, "start  : %" PRIu64 "\n", settings->pll_starttime);
+    //    fprintf(stdout, "running: %" PRIu64 "\n", t_frame_cpu - settings->pll_starttime);
+    //    fprintf(stdout, "period : %f\n", settings->pll_period);
+    //    fprintf(stdout, "k          : %" PRIu32 "\n", k);
+    //    fprintf(stdout, "last   : %" PRIu64 "\n", t_lastpulse);
+    //    fprintf(stdout, "diff       : %" PRId64 "\n", diff);
     }
         
     // Error is smaller then the accuracy of the timestamp in which the PWM signal is started.
     //  -> further optimisation is pointless..
-    if ( abs(diff) < settings->pll_startinterval ) {
+    if (( abs(diff) < settings->pll_startinterval ) || ( abs(diff) < offset_interval) ) {
         if (settings->verbose) {
-            fprintf(stdout, "lock!  : %" PRId64 "\n", diff);
+            fprintf(stdout, "lock! (diff = %" PRId64 " ns)\n", diff);
         }
 
         return Status::mmal_to_int(MMAL_SUCCESS);
@@ -149,14 +154,17 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     // As the sign of `diff` equals the speed up/slow down, we can use a direct computation:
     //  NOTE: a propotional update is done. Large difference have large speed up.
     
-    float d_period_s  = ( diff * fabs(diff / settings->pll_period) ) / 1000000.0f;  //seconds    
-    float period_s    = (1.0f / params->framerate) + d_period_s;
+    
+    
+    float d_period_s  = ( 4000.0f * diff / settings->pll_period ) / 1000000.0f;  //seconds    
+    float period_s    = (1.0f / settings->pll_freq) - d_period_s;
     params->framerate =  1.0f / period_s;
        
     
     if (settings->verbose) {
-        fprintf(stdout, "d_period_s : %f\n", d_period_s);
-        fprintf(stdout, "fps        : %f\n", params->framerate);
+        //fprintf(stdout, "err0r      : %f\n", diff / settings->pll_period);
+        //fprintf(stdout, "d_period_s : %f\n", d_period_s);
+        //fprintf(stdout, "fps        : %f\n", params->framerate);
     }
     
     //create rationale
@@ -456,8 +464,12 @@ void FlashCamPLL::setVideoPort( MMAL_PORT_T **videoport ) {
     _videoport = videoport;
 }
 
-
 int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport) {
+    int64_t err;
+    return FlashCamPLL::getGPUoffset(videoport, &err);
+}
+                                  
+int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, int64_t *err) {
     // offset values in us.
     static int64_t offset     = 0; //static average..
     static int64_t offset_err = 0; //interval/accuracy of offset
@@ -510,7 +522,8 @@ int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport) {
     update++;
     //fprintf(stdout, "gpu time : %" PRIu64 "\n", t_gpu);
     //fprintf(stdout, "cpu time : %" PRIu64 "\n", t_cpu1);
-    //fprintf(stdout, "offset   : %" PRId64 " / %" PRId64 " / %" PRId64 "\n", offset, offset_err, update);
+    //fprintf(stdout, "offset     : %" PRId64 " / %" PRId64 " / %" PRId64 "\n", offset, offset_err, update);
+    *err = offset_err;
     return offset;
 }
 
