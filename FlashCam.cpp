@@ -598,7 +598,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
             userdata->callback( userdata->framebuffer , userdata->settings->width , userdata->settings->height);
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        FlashCamPLL::update( userdata->settings, userdata->params, buffertime);
+        FlashCamPLL::update(port, userdata->settings, userdata->params, buffertime);
 #endif
         
         //release semaphore

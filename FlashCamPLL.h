@@ -44,25 +44,34 @@ class FlashCamPLL
 {
     
 private:
-    bool _error  = false;
-    bool _active = false;
-    
+    bool          _error        = false;
+    bool          _active       = false;
+    MMAL_PORT_T **_videoport    = NULL;
+
     //triggers resetpin. Implemented for debugging purposes. 
     void resetGPIO();
-    
+        
 public:   
     // Constructor / Destructor
     FlashCamPLL();
     ~FlashCamPLL();
-
+    
     int start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
     int stop(  FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
+
     
-    static void update( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);
+    //setup link to video port for timing-computations.
+    void setVideoPort( MMAL_PORT_T **videoport );
+    //get timeoffset CPU-GPU within tdiff (us) accuracy
+    //static int getGPUoffset(MMAL_PORT_T *port, uint64_t *tdiff, unsigned int *max_iter, int64_t *offset) ;
+    static int64_t getGPUoffset(MMAL_PORT_T *videoport);
     
+    //update Lock. This function is a callback from FlashCam when a frame is recieved.
+    static int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);
+    
+    //settings..
     static void getDefaultSettings( FLASHCAM_SETTINGS_T *settings );
     static void printSettings( FLASHCAM_SETTINGS_T *settings );
-    
 };
 
 
