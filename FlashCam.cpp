@@ -280,7 +280,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
         .num_preview_video_frames               = 3,
         .stills_capture_circular_buffer_height  = 0,
         .fast_preview_resume                    = 0,
-        .use_stc_timestamp                      = MMAL_PARAM_TIMESTAMP_MODE_RESET_STC
+        .use_stc_timestamp                      = MMAL_PARAM_TIMESTAMP_MODE_RAW_STC
     };
     
     if ( setCameraConfig( &cam_config ) ) {
