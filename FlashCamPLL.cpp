@@ -122,54 +122,88 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         // From links:
         //    1/f = pwm_range * pwm_clock / RPI_BASE_FREQ
         //
+        // SYSTEM PARAMETERS:
+        // -----
         // RPI_BASE_FREQ : base frequency of PWM system of RPi. 
         //                 Assumed to be fixed. Might be adjustable by user??
         // pwm_range     : is number of bits within a period.
-        // pwm_clock     : dividor for RPI_BASE_FREQ to set proper frequency
-        // pwm_duty      : number of withs within a period that signal is high.
+        // pwm_clock     : divider for RPI_BASE_FREQ to set PWM base frequency.
+        //                 Higher basefrequency means more pulses per PWM-Period and hence more accurate signal.
+        // pwm_pw        : number of bits within a period (pwm_range) that signal is high.
         //
-        // The given dutycycle (pll_duty) is 0-100% with 1% resolution ==> 100 steps.
-        // Therefore, error of the PWM signal can be described as 100 / pwm_range.
+        // USER DEFINED PARAMETERS:
+        // -----
+        // frequency     : targeted frequency (Hz) at which a full pwm cycle (high & low) should be produced.
+        //                 This frequency is a real-number limited between 0.0 to 120.0 Hz.
+        // pulsewidth    : number of milliseconds that the pwm pulse should be high. 
+        //                 When 0, a flat line (LOW) is observed. 
+        //                 When it equals 1000/frequency, a flat line (HIGH) is observed.
+        //                 pulsewidth is clipped to 0 and 1000/frequency.
         //
-        // Maximum frequency of the camera is 120Hz
+        // USER PARAMETERS -> SYSTEM PARAMETERS
+        // ------
         //
         // According to the datasheets / libraries, maximum values are:
-        // pwm_range     : 32 bits
-        // pwm_clock     : 12 bits (2 - 4095)
-        // pwm_duty      : 32 bits 
+        // pwm_range     : unsigned int, 32 bits (2 - 4294967295)
+        // pwm_clock     : unsigned int, 12 bits (2 - 4095)
+        // pwm_pw        : unsigned int, 32 bits (0 - 4294967295) 
         //
-        // Assuming an error of max 0.01% :
-        // pwm_range = 100/0.01 = 10000
+        // user values:
+        // frequency     : float, 0.0 - 120.0
+        // pulsewidth    : float, 0.0 - 1000.0/frequency
         //
-        // With f=120Hz  : pwm_clock = RPI_BASE_FREQ / 120 / 10000 ~   16
-        // With f=  1Hz  : pwm_clock = RPI_BASE_FREQ /   1 / 10000 ~ 1920
+        // These values are related as following:
+        // 
+        //    1/frequency = pwm_range * pwm_clock / RPI_BASE_FREQ
+        //    dutycycle   = pulsewidth * frequency / 1000
+        //    pwm_pw      = dutycycle * pwm_range
+        // 
+        // Or, assuming pwm_clock and frequency are given values:
         //
-        // So, with pwm_clock=16, we can satisfy the max error for 1 to 120Hz
+        //    (uint)  pwm_range   = RPI_BASE_FREQ / ( pwm_clock * frequency )
+        //    (float) dutycycle   = pulsewidth * frequency / 1000
+        //    (uint)  pwm_pw      = dutycycle * pwm_range
         //
-        // Validation:
+        // From these computations it can be observed that truncation (float -> int)
+        //  occures several steps. Hence, the resulting PWM signal can have a slight
+        //  error / inaccuracy when compared to the required settings. 
+        // 
+        // Some observations:
+        // - a large pwm_range will result in a more `true` pwm_pw. 
+        // - a low clock and frequency will give a larger pwm_range.
+        // - the smallest clock value (pwm_clock) is 2.
+        // - the largest range value (pwm_range) is 4294967295.
+        // - the maximum frequency is 120Hz.
         //
-        // pwm_clock = 16
-        // pwm_duty  = 0 to 100  ==> steps = 100
+        // Hence, we can compute the minimal frequency and pulsewidth-resolution.
         //
-        // With f=120Hz  : pwm_range  = RPI_BASE_FREQ / 120 / 16 = 10000
-        //               : error      = steps / pwm_range        = 0.01 %
-        // With f=  1Hz  : pwm_range  = RPI_BASE_FREQ /   1 / 16 = 1200000
-        //               : error      = steps / pwm_range        = 0.000083 %
+        // minimal frquency:
+        // frequency_min            = 1 / (pwm_range * pwm_clock / RPI_BASE_FREQ)
+        // frequency_min            = RPI_BASE_FREQ / ( pwm_range * pwm_clock )
+        //                          = 19200000 / ( 4294967295 * 2 )
+        //                          ~ 0.00224 Hz.
         //
-        // error @ dutycycle: +/- 0.083 ms
+        // minimal resolution:
+        // range_max @120Hz         = RPI_BASE_FREQ / ( pwm_clock * frequency )
+        //                          = 19200000 / ( 2 * 120 )
+        //                          = 80000
+        // resolution @120Hz        = period / pwm_range;
+        //                          = 1000 / (frequency * pwm_range);
+        //                          = 1000 / (120 * 80000);
+        //                          ~ 0.0001042 ms
+        //                          ~ 0.1042    us
         //
+        // resolution error         = 100 * (resolution / period)
+        //                          = 100 * ((period / pwm_range) / period)
+        //                          = 100 / pwm_range
+        //  - @120Hz                = 0.00125%     
+        //  - @0.00224Hz            = 0.0000000234%
         //
-        // If: 
-        // pwm_clock = 2:
+        // When pwm_clock is increases with a factor `x`:
+        //  - minimal resolution error will increase with `x`.
+        //  - minimal frequency will decrease with a factor `x`.
         //
-        // With f=120Hz  : pwm_range  = RPI_BASE_FREQ / 120 / 2 = 80000
-        //               : error      = steps / pwm_range       = 0.00125 %
-        // With f=  1Hz  : pwm_range  = RPI_BASE_FREQ /   1 / 2 = 9600000
-        //               : error      = steps / pwm_range       = 0.000010 %
-        //
-        // error @ dutycycle: +/- 0.01 ms
-        //
-        // So, it turns out that a clock-dividor of 2 satifies our need easily.
+        // Therefore, pwm_clock = 2 is sufficient for PLL.
         
         //reset GPIO
         resetGPIO();
@@ -184,7 +218,7 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         
         // clock & range
         unsigned int pwm_clock = 2;
-        unsigned int pwm_range = ( RPI_BASE_FREQ / target_frequency ) / pwm_clock; 
+        unsigned int pwm_range = RPI_BASE_FREQ / ( target_frequency * pwm_clock ); 
         
         // Determine maximum pulse length
         float target_period = 1000.0f/target_frequency; //ms
@@ -203,19 +237,19 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         if ( settings->verbose ) {            
             float real_pw  = ( pwm_pw * target_period) / pwm_range;
             float error    = (settings->pll_pulsewidth - real_pw) / settings->pll_pulsewidth;
-            float accuracy = target_period / pwm_range;
+            float resolution = target_period / pwm_range;
             
-            fprintf(stdout, "%s: PLL/PWL SETTINGS     : %f\n", __func__, settings->pll_freq);
+            fprintf(stdout, "%s: PLL/PWL SETTINGS\n", __func__);
             fprintf(stdout, " - Framerate     : %f\n", settings->pll_freq);
             fprintf(stdout, " - PWM frequency : %f\n", target_frequency);
+            fprintf(stdout, " - PWM resolution: %.6f ms\n", resolution );
             fprintf(stdout, " - RPi PWM-clock : %d\n", pwm_clock);
             fprintf(stdout, " - RPi PWM-range : %d\n", pwm_range);
-            fprintf(stdout, " - Dutycycle     : %.6f %%\n", dutycycle * 100);
-            fprintf(stdout, " - PLL pulsewidth: %.6f ms\n", settings->pll_pulsewidth);
-            fprintf(stdout, " - PWM pulsewidth: %d\n", pwm_pw);
+            fprintf(stdout, " - PLL Dutycycle : %.6f %%\n", dutycycle * 100);
+            fprintf(stdout, " - PLL Pulsewidth: %.6f ms\n", settings->pll_pulsewidth);
+            fprintf(stdout, " - PWM Pulsewidth: %d / %d\n", pwm_pw, pwm_range);
             fprintf(stdout, " -     --> in ms : %.6f ms\n", real_pw);
-            fprintf(stdout, " - Error (pulse) : %.6f %%\n", error );
-            fprintf(stdout, " - Accuracy      : %.6f ms\n", accuracy );
+            fprintf(stdout, " - Pulsewidth err: %.6f %%\n", error );
         }
         
         // Set pwm values
@@ -225,8 +259,13 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         // Try to get an accurate starttime 
         // --> we are not in a RTOS, so operations might get interrupted. 
         // --> keep setting clock (resetting pwm) untill we get an accurate estimate
-        // --> `accurate` ~ 200us
+        //
+        // When investigating the sourcecode of WiringPi, it shows that `pwmSetClock`
+        //  already has a buildin-delays of atleast 110us + 1us. 
+        // Therefore `max_locktime` should be at least 111us. 200us is a safe bet.
+        unsigned int max_locktime_us = 200;
 
+        //loop trackers..
         unsigned int iter = 0;
         struct timespec t1, t2;
         uint64_t t1_us, t2_us, tdiff;
@@ -234,7 +273,6 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         do {
             // get start-time
             clock_gettime(CLOCK_MONOTONIC, &t1);
-
             // set clock
             pwmSetClock(pwm_clock);
             // get finished-time
@@ -245,23 +283,29 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             t2_us = ((uint64_t) t2.tv_sec) * 1000000 + ((uint64_t) t2.tv_nsec) / 1000;
             tdiff = t2_us - t1_us;
             
-//            fprintf(stdout, "%s: t1         : %" PRIu64 " us\n", __func__, t1_us);
-//            fprintf(stdout, "%s: t2         : %" PRIu64 " us\n", __func__, t2_us);
-//            fprintf(stdout, "%s: tdiff      : %" PRIu64 " us\n", __func__, tdiff);
-
             //track iterations
             iter++;
-        } while (tdiff > 200);
+        } while (tdiff > max_locktime_us);
   
-        // started!
-        settings->pll_starttime     = t1_us;
-        settings->pll_startinterval = tdiff;
-        _active = true;
+        // By now we have a lock and PWM has started!
         
+        // As `pwmSetClock` takes a mimimum time of 111 us to activate the PWM, 
+        //  we can adjust starttime and narrow down the start-interval to more accurate values.
+        settings->pll_starttime     = t1_us + 111;
+        settings->pll_startinterval = tdiff - 111;
+        
+        // PLL is activated..
+        _active = true;
         if ( settings->verbose ) {
-            fprintf(stdout, "%s: starttime : %" PRIu64 "us\n", __func__, settings->pll_starttime);
-            fprintf(stdout, "%s: interval  : %" PRIu64 "us\n", __func__, settings->pll_startinterval);
-            fprintf(stdout, "%s: iterations: %d\n", __func__, iter);
+            //clock resolution
+            struct timespec tres;
+            clock_getres(CLOCK_MONOTONIC, &tres);
+            uint64_t res =  ((uint64_t) tres.tv_sec) * 1000000000 + ((uint64_t) tres.tv_nsec);            
+            fprintf(stdout, "%s: PLL/PWM start values\n", __func__);
+            fprintf(stdout, " - Starttime     : %" PRIu64 "us\n", settings->pll_starttime);
+            fprintf(stdout, " - Resolution    : %" PRIu64 "ns\n", res);
+            fprintf(stdout, " - Interval      : %" PRIu64 "us\n", settings->pll_startinterval);
+            fprintf(stdout, " - Iterations    : %d\n", iter);
         }
             
     } else {
