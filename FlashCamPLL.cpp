@@ -99,8 +99,6 @@ void FlashCamPLL::resetGPIO(){
 }
 
 int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
-    //TODO: offset
-    
     // get CPU-GPU offset
     uint64_t offset_interval;
      int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
