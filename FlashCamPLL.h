@@ -59,13 +59,9 @@ public:
     int start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
     int stop(  FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
 
-    
-    //setup link to video port for timing-computations.
-    void setVideoPort( MMAL_PORT_T **videoport );
-    //get timeoffset CPU-GPU within tdiff (us) accuracy
-    //static int getGPUoffset(MMAL_PORT_T *port, uint64_t *tdiff, unsigned int *max_iter, int64_t *offset) ;
+    //get (running average) timeoffset CPU-GPU within a specified accuracy
     static int64_t getGPUoffset(MMAL_PORT_T *videoport);
-    static int64_t getGPUoffset(MMAL_PORT_T *videoport, int64_t *err);
+    static int64_t getGPUoffset(MMAL_PORT_T *videoport, uint64_t *interval);
     
     //update Lock. This function is a callback from FlashCam when a frame is recieved.
     static int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);

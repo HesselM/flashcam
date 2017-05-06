@@ -75,6 +75,9 @@ FlashCam::FlashCam(){
  * Destructor
  */
 FlashCam::~FlashCam(){
+    //allow callback/buffer data to be emptied..
+    sleep(1);
+    //cleanup.
     destroyComponents();
     vcos_semaphore_delete(&_userdata.sem_capture);
 //#ifdef BUILD_FLASHCAM_WITH_PLL

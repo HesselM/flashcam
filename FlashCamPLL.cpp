@@ -100,13 +100,11 @@ void FlashCamPLL::resetGPIO(){
 
 int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
     //TODO: divider
-    //TODO: fps -> 0
     //TODO: offset
     
-    
     // get CPU-GPU offset
-    int64_t offset_interval;
-    int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
+    uint64_t offset_interval;
+     int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
     
     // get frametimings in CPU & GPU space.
     uint64_t t_frame_gpu = buffertime;
@@ -138,35 +136,45 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     //    fprintf(stdout, "diff       : %" PRId64 "\n", diff);
     }
         
-    // Error is smaller then the accuracy of the timestamp in which the PWM signal is started.
-    //  -> further optimisation is pointless..
-    if (( abs(diff) < settings->pll_startinterval ) || ( abs(diff) < offset_interval) ) {
+    // We have locked the Camera with PWM if the difference between those is smaller
+    //  than half of the (largest) computed intervals of either the starttime of PWM
+    //  or the accuracy of the CPU-GPU clock offset.
+    // When the computed difference is smaller, further optimisation is not usefull, hence return.
+    uint64_t locklimit = offset_interval / 2.0;
+    if ( settings->pll_startinterval > offset_interval)
+        locklimit = settings->pll_startinterval / 2.0;
+    
+    if ( abs(diff) < locklimit ) {
+        //Lock!
+        
         if (settings->verbose) {
-            fprintf(stdout, "lock! (diff = %" PRId64 " ns)\n", diff);
+            fprintf(stdout, "PLLupdate: diff= %5" PRId64 " us / fps=%f Hz - locked!\n", diff, params->framerate);
         }
 
-        return Status::mmal_to_int(MMAL_SUCCESS);
+        //check if the framerate of the camera is the dedicated fps.
+        // If note, update, if it is: we are done.
+        if (params->framerate != settings->pll_fpsfreq)
+            params->framerate = settings->pll_fpsfreq;
+        else
+            return Status::mmal_to_int(MMAL_SUCCESS);
+    } else {
+        // No Lock (yet)
+        
+        // if pulse is in the past (diff>0), frame is too late, so speed up, increase fps
+        // if pulse is in the future (diff<0), frame is too early, so slow down, decrease fps
+        
+        // As the sign of `diff` equals the speed up/slow down, we can use a direct computation:
+        //  NOTE: a propotional update is done. Large difference have large speed up.
+
+        // Crude update rule...
+        float updaterate  = 4.0f;
+        params->framerate = settings->pll_fpsfreq + (updaterate * (diff / settings->pll_period));
     }
-    
-    // if pulse is in the past (diff>0), frame is too late, so speed up, increase fps
-    // if pulse is in the future (diff<0), frame is too early, so slow down, decrease fps
-    
-    // As the sign of `diff` equals the speed up/slow down, we can use a direct computation:
-    //  NOTE: a propotional update is done. Large difference have large speed up.
-    
-    
-    
-    float d_period_s  = ( 4000.0f * diff / settings->pll_period ) / 1000000.0f;  //seconds    
-    float period_s    = (1.0f / settings->pll_freq) - d_period_s;
-    params->framerate =  1.0f / period_s;
-       
     
     if (settings->verbose) {
-        //fprintf(stdout, "err0r      : %f\n", diff / settings->pll_period);
-        //fprintf(stdout, "d_period_s : %f\n", d_period_s);
-        //fprintf(stdout, "fps        : %f\n", params->framerate);
+        fprintf(stdout, "PLLupdate: diff= %5" PRId64 " us / fps=%f Hz\n", diff, params->framerate);
     }
-    
+
     //create rationale
     MMAL_RATIONAL_T f;        
     f.den = 256;
@@ -177,28 +185,9 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     MMAL_PARAMETER_FRAME_RATE_T param = {{MMAL_PARAMETER_VIDEO_FRAME_RATE, sizeof(param)}, f};
     if ((status = mmal_port_parameter_set(port, &param.hdr)) != MMAL_SUCCESS)
         return Status::mmal_to_int(status);
-
     
-    
-    /*
-    
-    if (settings->verbose) {
-        //fprintf(stdout, "time:%d\n", buffertime);
-        
-        uint64_t     tdiff    = 150; //max interval difference in us
-        unsigned int max_iter = 10;  //max tries to get offset
-        int64_t      offset;         //offset in us;
-        if (!FlashCamPLL::getGPUoffset(port, &tdiff, &max_iter, &offset)) {
-            fprintf(stdout, "time    : %" PRIu64 "\n", buffertime);
-            fprintf(stdout, "offset  : %" PRId64 "\n", offset);
-            fprintf(stdout, "tidff   : %" PRIu64 "\n", tdiff);
-            fprintf(stdout, "max_iter: %d\n", max_iter);
-            fprintf(stdout, "--------------------\n");
-        } else {
-            fprintf(stdout, "--------MISSED----------\n");
-        }
-    }
-     */
+    //succes!
+    return Status::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
@@ -314,17 +303,17 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         // Setup PWM pin
         pinMode( PLL_PIN, PWM_OUTPUT );
         // We do not want the balanced-pwm mode.
-        pwmSetMode( PWM_MODE_MS );        
+        pwmSetMode( PWM_MODE_MS );   
+        
         // Set targeted fps
-        settings->pll_freq     = params->framerate;
-        float target_frequency = settings->pll_freq / settings->pll_divider;
+        float target_frequency  = params->framerate / settings->pll_divider;
         
         // clock & range
-        unsigned int pwm_clock = 2;
-        unsigned int pwm_range = RPI_BASE_FREQ / ( target_frequency * pwm_clock ); 
+        unsigned int pwm_clock  = 2;
+        unsigned int pwm_range  = RPI_BASE_FREQ / ( target_frequency * pwm_clock ); 
         
         // Determine maximum pulse length
-        float target_period = 1000.0f/target_frequency; //ms
+        float target_period     = 1000.0f / target_frequency;                   //ms
         
         // Limit pulsewidth to period
         if ( settings->pll_pulsewidth > target_period) 
@@ -333,9 +322,14 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             settings->pll_pulsewidth = 0;        
         
         // Map pulsewidth to RPi-range
-        float dutycycle     = settings->pll_pulsewidth / target_period;
-        unsigned int pwm_pw = dutycycle * pwm_range; 
+        float dutycycle         = settings->pll_pulsewidth / target_period;
+        unsigned int pwm_pw     = dutycycle * pwm_range; 
                 
+        // Store PLL/PWM settings
+        settings->pll_period    = 1000000.0f / target_frequency;                //us
+        settings->pll_fpsfreq   = target_frequency * settings->pll_divider;     //Hz
+        settings->pll_offset    = 0;                                            //us
+
         // Show computations?
         if ( settings->verbose ) {            
             float real_pw  = ( pwm_pw * target_period) / pwm_range;
@@ -343,7 +337,7 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             float resolution = target_period / pwm_range;
             
             fprintf(stdout, "%s: PLL/PWL SETTINGS\n", __func__);
-            fprintf(stdout, " - Framerate     : %f\n", settings->pll_freq);
+            fprintf(stdout, " - Framerate     : %f\n", params->framerate);
             fprintf(stdout, " - PWM frequency : %f\n", target_frequency);
             fprintf(stdout, " - PWM resolution: %.6f ms\n", resolution );
             fprintf(stdout, " - RPi PWM-clock : %d\n", pwm_clock);
@@ -396,9 +390,6 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         //  we can adjust starttime and narrow down the start-interval to more accurate values.
         settings->pll_starttime     = t1_us + 111;
         settings->pll_startinterval = tdiff - 111;
-        // period of PWM in us.
-        settings->pll_period        = 1000000.0f / target_frequency;
-        settings->pll_offset        = 0;
         
         // PLL is activated..
         _active = true;
@@ -444,7 +435,7 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
     //stop PWM
     pwmWrite(PLL_PIN, 0);
     //reset fps
-    params->framerate = settings->pll_freq;
+    params->framerate = settings->pll_fpsfreq;
     //reset active-flag
     _active = false;
     
@@ -454,26 +445,16 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
     return 0;
 }
 
-
-
-
-
-
-//setup link to video port for timing-computations.
-void FlashCamPLL::setVideoPort( MMAL_PORT_T **videoport ) {
-    _videoport = videoport;
-}
-
 int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport) {
-    int64_t err;
-    return FlashCamPLL::getGPUoffset(videoport, &err);
+    uint64_t interval;
+    return FlashCamPLL::getGPUoffset(videoport, &interval);
 }
                                   
-int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, int64_t *err) {
+int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, uint64_t *interval) {
     // offset values in us.
-    static int64_t offset     = 0; //static average..
-    static int64_t offset_err = 0; //interval/accuracy of offset
-    static int64_t update     = 0;
+    static  int64_t offset           = 0; //static average..
+    static uint64_t offset_interval  = 0; //interval/accuracy of offset
+    static  int64_t update           = 0;
     
     // offset requirements
     unsigned int max_iter = 5;   //try to compute offset X times
@@ -507,15 +488,15 @@ int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, int64_t *err) {
     
     //do we have an offset?
     if (iter < max_iter) {
-        int64_t d_offset     = t_cpu1 - t_gpu;
-        int64_t d_offset_err = t_cpu2 - t_cpu1;
+        int64_t d_offset          = t_cpu1 - t_gpu;
+        int64_t d_offset_interval = t_cpu2 - t_cpu1;
         
         if (offset == 0) {
-            offset     = d_offset;
-            offset_err = d_offset_err;
+            offset          = d_offset;
+            offset_interval = d_offset_interval;
         } else {
-            offset     = ((1.0f - rate) * offset     ) + (rate * d_offset);
-            offset_err = ((1.0f - rate) * offset_err ) + (rate * d_offset_err);
+            offset          = ((1.0f - rate) * offset          ) + (rate * d_offset);
+            offset_interval = ((1.0f - rate) * offset_interval ) + (rate * d_offset_interval);
         }
     }
     
@@ -523,7 +504,7 @@ int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, int64_t *err) {
     //fprintf(stdout, "gpu time : %" PRIu64 "\n", t_gpu);
     //fprintf(stdout, "cpu time : %" PRIu64 "\n", t_cpu1);
     //fprintf(stdout, "offset     : %" PRId64 " / %" PRId64 " / %" PRId64 "\n", offset, offset_err, update);
-    *err = offset_err;
+    *interval = offset_interval;
     return offset;
 }
 
@@ -536,7 +517,7 @@ void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->pll_pulsewidth    = 0.5f / VIDEO_FRAME_RATE_NUM;  // 50% duty cycle with default framerate
     
     //internals
-    settings->pll_freq          = 0;
+    settings->pll_fpsfreq       = 0;
     settings->pll_starttime     = 0;
     settings->pll_startinterval = 0;
 }

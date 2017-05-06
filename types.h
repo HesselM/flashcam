@@ -120,10 +120,10 @@ typedef struct {
     float pll_pulsewidth;                       // Pulse width (ms) : 0 to 1/frequency   (NOTE: will be rounded according to available accuracy).
     
     //INTERNAL VARIABLES. CANNOT BE SET/READ. USED FOR PLL TRACKING
-    float pll_freq;                             // [ copy of params.framerate ]
     uint64_t pll_starttime;                     // [ starttime of PLL in us ]
     uint64_t pll_startinterval;                 // [ Interval in which clock is started ]
-    float pll_period;                          // [ period of a single pwm signal in us ]
+    float pll_fpsfreq;                          // [ frequency of PLL corrected towards fps. ]
+    float pll_period;                           // [ period of a single pwm signal in us ]
     uint64_t pll_offset;                        // [ synchronisation moment; time between start and frame -> start of pwm; us ]
 #endif
     
