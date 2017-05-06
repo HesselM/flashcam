@@ -99,7 +99,6 @@ void FlashCamPLL::resetGPIO(){
 }
 
 int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
-    //TODO: divider
     //TODO: offset
     
     // get CPU-GPU offset
@@ -121,7 +120,7 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     uint64_t t_lastpulse = settings->pll_starttime + (uint64_t)(k * pll_fpsperiod);
     
     // difference with frame:
-    int64_t diff         = t_frame_cpu - t_lastpulse;
+    int64_t diff         = t_frame_cpu - t_lastpulse + settings->pll_offset;
     
     // if difference > period/2 ( or 2*difference > period)
     //  --> captured image is too early: pulse for frame is in the future. 
@@ -346,7 +345,6 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         // Store PLL/PWM settings
         settings->pll_period    = 1000000.0f / target_frequency;                //us
         settings->pll_fpsfreq   = target_frequency * settings->pll_divider;     //Hz
-        settings->pll_offset    = 0;                                            //us
 
         // Show computations?
         if ( settings->verbose ) {            

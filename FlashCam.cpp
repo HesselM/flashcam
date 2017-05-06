@@ -1041,6 +1041,31 @@ int FlashCam::getPLLDivider( unsigned int *divider ) {
 #endif        
 }
 
+int FlashCam::setPLLOffset( unsigned int  offset ){    
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change PLL-offset while camera is active\n", __func__);
+        return Status::mmal_to_int(MMAL_EINVAL);
+    }
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    _settings.pll_offset = offset;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot set PLL-offset. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif    
+}
+
+int FlashCam::getPLLOffset( unsigned int *offset ) {
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    *offset = _settings.pll_offset;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot get PLL-offset. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif        
+}
+
 /* PARAMETER MANAGEMENT */
 
 void FlashCam::getDefaultParams(FLASHCAM_PARAMS_T *params) {

@@ -105,11 +105,12 @@ int main(int argc, const char **argv) {
     //camera.setISO(800);
     FlashCam::get().setRotation(270);
     
-    float pll_fps = 99;
-    int   pll_div = 50;
+    float        pll_fps = 10;
     //float pll_pw  = 500.0f / (pll_fps / pll_div); //50% dutycycle
     //float pll_pw  = 33.333333; // ms
-    float pll_pw  = 3000/pll_fps; // ms
+    float        pll_pw  = 3000/pll_fps; // ms
+    unsigned int pll_div = 1;
+    unsigned int pll_offset = 1000;      // us
     
     FlashCam::get().setFrameRate(pll_fps);
 
@@ -117,7 +118,8 @@ int main(int argc, const char **argv) {
     FlashCam::get().setPLLEnabled(1);
     FlashCam::get().setPLLDivider(pll_div);
     FlashCam::get().setPLLPulseWidth(pll_pw);
-    
+    FlashCam::get().setPLLOffset(pll_offset);
+
     //get & print params
     FlashCam::get().getParams( &params , true);   
     FlashCam::printParams( &params ); 
@@ -144,7 +146,7 @@ int main(int argc, const char **argv) {
     
     //wait
     int show =  0;  //show image with opencv?
-    int time =  5;  //total time (seconds) of streaming/running
+    int time =  10;  //total time (seconds) of streaming/running
     int fps  =  5;  //refreshrate of window
     
     //refresh loop
