@@ -105,11 +105,11 @@ int main(int argc, const char **argv) {
     //camera.setISO(800);
     FlashCam::get().setRotation(270);
     
-    float pll_fps = 30;
-    int   pll_div = 1;
+    float pll_fps = 99;
+    int   pll_div = 50;
     //float pll_pw  = 500.0f / (pll_fps / pll_div); //50% dutycycle
     //float pll_pw  = 33.333333; // ms
-    float pll_pw  = 0.124; // ms
+    float pll_pw  = 3000/pll_fps; // ms
     
     FlashCam::get().setFrameRate(pll_fps);
 
