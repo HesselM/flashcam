@@ -53,15 +53,15 @@ static double prev;
 static double sum;
 
 //NOTE: width/height are rounded/aligned in FlashCam-lib! For actual values, check setting-values after initialisation
-#define FRAME_WIDTH  640
-#define FRAME_HEIGHT 480
-#define MAX_FRAMES   1000
+#define FRAME_WIDTH  1280
+#define FRAME_HEIGHT 960
+#define MAX_FRAMES   100
 static int frames;
 
-static unsigned char framebuffer[MAX_FRAMES][FRAME_WIDTH*FRAME_HEIGHT]
+static unsigned char framebuffer[MAX_FRAMES][FRAME_WIDTH*FRAME_HEIGHT];
 
 void flashcam_callback(unsigned char *frame, int w, int h) {
-    //fprintf(stdout, "callback: %p (%d x %d)\n", frame, w, h);
+    fprintf(stdout, "callback: %p (%d x %d)\n", frame, w, h);
     //update opencv image
     //Y.data = (uchar*) &(frame[0]);
     //U.data = (uchar*) &(frame[(w*h*1)>>0]);
@@ -71,8 +71,14 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
     //memcpy(U.data, &(frame[(w*h*1)>>0]), (w>>1)*(h>>1));
     //memcpy(V.data, &(frame[(w*h*5)>>2]), (w>>1)*(h>>1));
     
+    //fprintf(stdout, "callback\n");
+    
     //copy data to framebuffer
-    memcpy(&(framebuffer[frames][0]), &(frame[0]), w*h);
+    if (frames < MAX_FRAMES) {
+      //  fprintf(stdout, "memcpy:%d\n", frames);
+        memcpy(&(framebuffer[frames][0]), &(frame[0]), w*h);
+    }
+   // fprintf(stdout, "done. (%d)\n", frames);
     
     //timing
     double tick    = cv::getTickCount();
@@ -81,6 +87,8 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
     frames++;
     prev = tick;
     
+  //  fprintf(stdout, "update. (%d)\n", frames);
+
     if ((frames % 120) == 0)
         fprintf(stdout, "Timing: %f (avg: %f; frames: %d; fps:%f)\n", elapsed, sum/frames, frames, 1.0/(sum/frames));
 }
@@ -115,12 +123,12 @@ int main(int argc, const char **argv) {
     //camera.setISO(800);
     FlashCam::get().setRotation(270);
     
-    float        pll_fps = 120
+    float        pll_fps = 40
     ;
     //float pll_pw  = 500.0f / (pll_fps / pll_div); //50% dutycycle
     //float pll_pw  = 33.333333; // ms
-    float        pll_pw  = 3000/pll_fps; // ms -> 1/3 of fps
-    unsigned int pll_div = 1;
+    float        pll_pw  = 1;//1000/(3*pll_fps); // ms -> 1/3 of fps
+    unsigned int pll_div = 2;
     unsigned int pll_offset = 0;      // us
     
     FlashCam::get().setFrameRate(pll_fps);
@@ -190,25 +198,40 @@ int main(int argc, const char **argv) {
     */
     
     //wait for framebuffer to be filled
-    while (frames < MAX_FRAMES)
+    fprintf(stdout, "%d/%d\n", frames, MAX_FRAMES);
+    while (frames < MAX_FRAMES) {
         usleep(1000000); //1sec sleep
+        fprintf(stdout, "waiting..\n");
 
+    }
+    
+    fprintf(stdout, "stop\n");
+    
     //start stream image
     FlashCam::get().stopCapture();   
 
+    
+    std::vector<int> compression_params;
+    compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
+    compression_params.push_back(80);
+
+    
     //write to files
-    for (int i=0l i<MAX_FRAMES; i++) {
+    for (int i=0; i<MAX_FRAMES; i++) {
 
         //set data
         Y.data = &(framebuffer[i][0]);
 
         //create filename
-        char filename[11];
-        sprintf(filename, "%010d.jpg", frames);
+        char filename[15];
+        sprintf(filename, "%010d.jpg", i);
         fprintf(stdout, "%s\n", filename);
         
         //write to file
-        cv::imwrite(filename, Y);
+        cv::imwrite(filename, Y, compression_params);
+        
+        //cv::imshow ("Y", Y);
+        //cv::waitKey(0);
     }
     
     //show params

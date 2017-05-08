@@ -447,7 +447,35 @@ public:
     //MMAL_PARAMETER_CAMERA_MIN_ISO,            /**< Takes a @ref MMAL_PARAMETER_UINT32_T */
     //MMAL_PARAMETER_CAMERA_USE_CASE,           /**< Takes a @ref MMAL_PARAMETER_CAMERA_USE_CASE_T */
     //MMAL_PARAMETER_CAPTURE_STATS_PASS,        /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
+    
     //MMAL_PARAMETER_CAMERA_CUSTOM_SENSOR_CONFIG, /**< Takes a @ref MMAL_PARAMETER_UINT32_T */
+    // https://www.raspberrypi.org/documentation/raspbian/applications/camera.md
+    // status = mmal_port_parameter_set_uint32(camera->control, MMAL_PARAMETER_CAMERA_CUSTOM_SENSOR_CONFIG, mode);
+    //
+    // V1:
+    //Mode Size        Aspect  Frame        FOV     Binning
+    //                 Ratio   rates
+    // 0   automatic   
+    // 1   1920x1080   16:9         1-30fps Partial None
+    // 2   2592x1944    4:3         1-15fps Full    None
+    // 3   2592x1944    4:3    0.1666- 1fps Full    None
+    // 4   1296x972     4:3         1-42fps Full    2x2
+    // 5   1296x730    16:9         1-49fps Full    2x2
+    // 6    640x480     4:3      42.1-60fps Full    2x2 plus skip
+    // 7    640x480     4:3      60.1-90fps Full    2x2 plus skip
+    // 
+    // V2:
+    //Mode Size        Aspect  Frame       FOV     Binning
+    //                 Ratio   rates
+    //0	automatic selection
+    // 1   1920x1080   16:9    0.1-30fps   Partial None
+    // 2   3280x2464    4:3    0.1-15fps   Full    None
+    // 3   3280x2464    4:3    0.1-15fps   Full    None
+    // 4   1640x1232    4:3    0.1-40fps   Full    2x2
+    // 5   1640x922    16:9    0.1-40fps   Full    2x2
+    // 6   1280x720    16:9     40-90fps   Partial 2x2
+    // 7    640x480     4:3     40-90fps   Partial 2x2
+    
     //MMAL_PARAMETER_ENABLE_REGISTER_FILE,      /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
     //MMAL_PARAMETER_REGISTER_FAIL_IS_FATAL,    /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
     //MMAL_PARAMETER_CONFIGFILE_REGISTERS,      /**< Takes a @ref MMAL_PARAMETER_CONFIGFILE_T */
