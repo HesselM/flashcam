@@ -60,6 +60,9 @@
 // WiringPi pin to which reset is connected
 #define RESET_PIN 0
 
+// Accuracy/denominator for fps-update.
+#define FPS_DENOMINATOR 256
+
 //reference to videopot
 static MMAL_PORT_T **PLL_videoport = NULL;
 
@@ -112,13 +115,10 @@ void FlashCamPLL::resetGPIO(){
 // - 
 
 int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
-//    fprintf(stdout, "PLLupdate\n");
 
     // get CPU-GPU offset
     uint64_t offset_interval;
      int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
-    
-//    fprintf(stdout, "PLLoffset\n");
     
     // get frametimings in CPU & GPU space.
     uint64_t t_frame_gpu = buffertime;
@@ -137,15 +137,13 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     // difference with frame:
     int64_t diff         = t_frame_cpu - t_lastpulse + settings->pll_offset;
     
-//    fprintf(stdout, "PLLdiff\n");
-
-    
     // if difference > period/2 ( or 2*difference > period)
     //  --> captured image is too early: pulse for frame is in the future. 
     //    --> hence difference should be negative
     if ( (diff*2) > pll_fpsperiod )
         diff = diff - pll_fpsperiod;
     
+    /*
     // We have locked the Camera with PWM if the difference between those is smaller
     //  than half of the (largest) computed intervals of either the starttime of PWM
     //  or the accuracy of the CPU-GPU clock offset.
@@ -153,82 +151,34 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     uint64_t locklimit = offset_interval / 2.0;
     if ( settings->pll_startinterval > offset_interval)
         locklimit = settings->pll_startinterval / 2.0;
-    
-    // locktets:
-    locklimit = 0;
-
-    /*
-    if ( abs(diff) < locklimit ) {
-        //Lock!
-//        fprintf(stdout, "Lock\n");
-
-        if (settings->verbose) {
-            fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ] - locked!\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
-        }
-
-        //check if the framerate of the camera is the dedicated fps.
-        // If note, update, if it is: we are done.
-        if (params->framerate != settings->pll_fpsfreq)
-            params->framerate = settings->pll_fpsfreq;
-        else
-            return Status::mmal_to_int(MMAL_SUCCESS);
-    } else {
-        // No Lock (yet)
-
-        //Only 10 updates / second to prevent overflow!
-        
-        // -> number of frames to get 10Hz update rate    
-        unsigned int fcount = (settings->pll_fpsfreq / 30.0f);
-        
-        // -> prohibit error with frames < 10Hz. 
-        if (fcount == 0)
-            fcount = 1;
-        
-        //fcountest
-        fcount = k;
-        
-        // -> check update rate
-        if ((fcount > 0) && (k % fcount != 0)) {
-            fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ]\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
-            return Status::mmal_to_int(MMAL_SUCCESS);
-        }
-        
-        // if pulse is in the past (diff>0), frame is too late, so speed up, increase fps
-        // if pulse is in the future (diff<0), frame is too early, so slow down, decrease fps
-        
-        // As the sign of `diff` equals the speed up/slow down, we can use a direct computation:
-        //  NOTE: a propotional update is done. Large difference have large speed up.
-
-        // Crude update rule...
-        float updaterate  = settings->pll_fpsfreq / 4.0f;
-        params->framerate = settings->pll_fpsfreq + (updaterate * (diff / pll_fpsperiod));
-        
-        // What does this crude update rule do?
-        // 1) (diff / pll_fpsperiod) -> computes the error (or pwm-camera difference) as a percentage [0.0 - 1.0] of the original frequency.
-        //      as `diff` is max 50% of the period, the error is between 0 and 50%.
-        //      as `diff` can be negative, the error lies in -50% to 50%.
-        // 2) updaterate             -> scaler multiplied with the error which adjust the target frequency.
-        //      experiments showed that a fixed error accros different frequencies was not able to lock high rates.
-        //       hence the update rate is dependent on the set frequency.
-        // 3) In effect, the target frequency is adjusts with a range [ -0.125*f to +0.125*f ] where `f` is the target frequency.
-        // 4) The framerate is set based on the target instead of a previous result as the system otherwise goes out of control
-        // NOTE: accuract is 1/256! smaller updates are not registrated (this is due to the rational-effect of mmal. see below)
-    }
-     */
+    */
     
     // Crude update rule...
     float updaterate  = settings->pll_fpsfreq / 4.0f;
     float nframerate  = settings->pll_fpsfreq + (updaterate * (diff / pll_fpsperiod));
 
-    unsigned int oldf = params->framerate * 256;
-    unsigned int newf = nframerate * 256;
+    // What does this crude update rule do?
+    // 1) (diff / pll_fpsperiod) -> computes the error (or pwm-camera difference) as a percentage [0.0 - 1.0] of the original frequency.
+    //      as `diff` is max 50% of the period, the error is between 0 and 50%.
+    //      as `diff` can be negative, the error lies in -50% to 50%.
+    // 2) updaterate             -> scaler multiplied with the error which adjust the target frequency.
+    //      experiments showed that a fixed error accros different frequencies was not able to lock high rates.
+    //       hence the update rate is dependent on the set frequency.
+    // 3) In effect, the target frequency is adjusts with a range [ -0.125*f to +0.125*f ] where `f` is the target frequency.
+    // 4) The framerate is set based on the target instead of a previous result as the system otherwise goes out of control
     
     
+    
+    // check if update falls within accuracy.
+    unsigned int oldf = params->framerate * FPS_DENOMINATOR;
+    unsigned int newf = nframerate * FPS_DENOMINATOR;
     
     if ( oldf == newf) {
+        // no update
         fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ] - same rate\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
         return Status::mmal_to_int(MMAL_SUCCESS);
     } else {
+        // update
         params->framerate = nframerate;
     }
     
@@ -237,10 +187,9 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ]\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
     }
 
-    
     //create rationale
     MMAL_RATIONAL_T f;        
-    f.den = 256;
+    f.den = FPS_DENOMINATOR;
     f.num = (unsigned int) (params->framerate * f.den);
     
     //update port.
