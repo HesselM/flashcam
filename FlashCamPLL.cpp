@@ -576,17 +576,20 @@ int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, uint64_t *interval) {
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->pll_enabled       = 0;
     settings->pll_divider       = 1;                            // use camera frequency.
+    settings->pll_offset        = 0;
     settings->pll_pulsewidth    = 0.5f / VIDEO_FRAME_RATE_NUM;  // 50% duty cycle with default framerate
-    
+
     //internals
-    settings->pll_fpsfreq       = 0;
     settings->pll_starttime     = 0;
     settings->pll_startinterval = 0;
+    settings->pll_fpsfreq       = 0;
+    settings->pll_period        = 0;
 }
 
 void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stderr, "PLL Enabled   : %d\n", settings->pll_enabled);
     fprintf(stderr, "PLL Divider   : %d\n", settings->pll_divider);
+    fprintf(stderr, "PLL Offset    : %d us\n", settings->pll_offset);
     fprintf(stderr, "PLL Pulsewidth: %0.5f ms\n", settings->pll_pulsewidth);
 }
 
