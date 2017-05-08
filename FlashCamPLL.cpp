@@ -63,9 +63,20 @@
 // Accuracy/denominator for fps-update.
 #define FPS_DENOMINATOR 256
 
-//reference to videopot
-static MMAL_PORT_T **PLL_videoport = NULL;
-
+/* Update-frequency tracker. */
+// Maximum error before a measurement is marked as `delayed` 
+// ==> (measurement * error) > target ==> `delayed`
+#define FPSREDUCER_MAX_DELAY 0.8
+// Number of measurements used to determine if frequency needs to be reduced
+#define FPSREDUCER_MEASUREMENTS 10
+// Maximum number of measurements which are allowed to be delayed
+// NOTE: should be <= FPSREDUCER_MEASUREMENTS and >= 2
+#define FPSREDUCER_MAX_DELAYED 3
+// state-trackers
+static unsigned int  fpsreducer_idx;
+static unsigned int  fpsreducer_sum;
+static unsigned char fpsreducer_tracker[FPSREDUCER_MEASUREMENTS];
+static uint64_t      fpsreducer_prev;
 
 FlashCamPLL::FlashCamPLL() {
     _error   = false;
@@ -80,19 +91,17 @@ FlashCamPLL::FlashCamPLL() {
         fprintf(stderr, "%s: Cannot init WiringPi.\n", __func__);
         _error = true;
     }
-    
-    
+        
     // Set pin-functions
     pinMode( PLL_PIN, PWM_OUTPUT );
     pinMode( RESET_PIN, OUTPUT );
     resetGPIO();
 }
 
-
-
 FlashCamPLL::~FlashCamPLL() {
-    //stop pwm
+    // stop pwm
     pwmWrite(PLL_PIN, 0);    
+    // reset HW
     resetGPIO();
 }
 
@@ -127,6 +136,34 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     //correct pll-period toward frames with pll-divider
     float pll_fpsperiod = settings->pll_period / settings->pll_divider;
     
+    // Validate that update rate is close to set frequency. If not, frequency is too high, hence no lock can be obtained.
+    // In such a case the target frequency should be adjusted to a more proper value.
+    // As an adjustment of the PWM-system may take too much time, it is not updated. 
+    // Instead, the PLL mechanism is tricked to think that the PWM sign al runs half the frequency.
+        
+    // remove old value
+    fpsreducer_sum -= fpsreducer_tracker[fpsreducer_idx];
+    // set new value
+    fpsreducer_tracker[fpsreducer_idx] = (((t_frame_gpu - fpsreducer_prev) * FPSREDUCER_MAX_DELAY) >= pll_fpsperiod ) ? 1 : 0; 
+    fpsreducer_sum += fpsreducer_tracker[fpsreducer_idx];   
+    // check reset
+    if ( fpsreducer_sum >= FPSREDUCER_MAX_DELAYED ) {
+        //reduce frequency
+        settings->pll_period  = settings->pll_period * 2;
+        settings->pll_fpsfreq = settings->pll_fpsfreq / 2;
+        //reset tracker
+        for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
+            fpsreducer_tracker[i] = 0;
+        fpsreducer_idx  = 0;
+        fpsreducer_sum  = 0;
+        fpsreducer_prev = 0;
+    } else {
+        //set new index/value
+        fpsreducer_idx  = (fpsreducer_idx + 1) % FPSREDUCER_MEASUREMENTS;
+        fpsreducer_prev = t_frame_gpu;
+    }    
+    fprintf(stdout, "PLLtracker: sum=%df  / %d \n", fpsreducer_sum, FPSREDUCER_MAX_DELAYED);
+
     // number of pulses since starting PPL
     uint32_t k           = ((t_frame_cpu - settings->pll_starttime) / pll_fpsperiod );
     
@@ -311,6 +348,13 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         
         //reset GPIO
         resetGPIO();
+        
+        //reset FPS-tracker
+        for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
+            fpsreducer_tracker[i] = 0;
+        fpsreducer_idx  = 0;
+        fpsreducer_sum  = 0;
+        fpsreducer_prev = 0;
         
         // Setup PWM pin
         pinMode( PLL_PIN, PWM_OUTPUT );
