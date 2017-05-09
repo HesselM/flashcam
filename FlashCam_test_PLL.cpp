@@ -55,13 +55,13 @@ static double sum;
 //NOTE: width/height are rounded/aligned in FlashCam-lib! For actual values, check setting-values after initialisation
 #define FRAME_WIDTH  1280
 #define FRAME_HEIGHT 960
-#define MAX_FRAMES   100
+#define MAX_FRAMES   121
 static int frames;
 
 static unsigned char framebuffer[MAX_FRAMES][FRAME_WIDTH*FRAME_HEIGHT];
 
 void flashcam_callback(unsigned char *frame, int w, int h) {
-    fprintf(stdout, "callback: %p (%d x %d)\n", frame, w, h);
+    //fprintf(stdout, "callback: %p (%d x %d)\n", frame, w, h);
     //update opencv image
     //Y.data = (uchar*) &(frame[0]);
     //U.data = (uchar*) &(frame[(w*h*1)>>0]);
@@ -201,8 +201,6 @@ int main(int argc, const char **argv) {
     fprintf(stdout, "%d/%d\n", frames, MAX_FRAMES);
     while (frames < MAX_FRAMES) {
         usleep(1000000); //1sec sleep
-        fprintf(stdout, "waiting..\n");
-
     }
     
     fprintf(stdout, "stop\n");
@@ -215,7 +213,7 @@ int main(int argc, const char **argv) {
     compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
     compression_params.push_back(80);
 
-    
+    /*
     //write to files
     for (int i=0; i<MAX_FRAMES; i++) {
 
@@ -233,6 +231,7 @@ int main(int argc, const char **argv) {
         //cv::imshow ("Y", Y);
         //cv::waitKey(0);
     }
+    */
     
     //show params
     //FlashCam::get().getParams( &params , true);   

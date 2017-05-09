@@ -165,7 +165,7 @@ public:
     int setPLLOffset( int  offset );
     int getPLLOffset( int *offset );
     int setPLLFPSReducerEnabled( unsigned int  enabled );
-    int setPLLFPSReducerEnabled( unsigned int *enabled);
+    int getPLLFPSReducerEnabled( unsigned int *enabledv);
     
     /*
      * These MMAL_PARAMS_XXXXXX paramter-values are taken from 

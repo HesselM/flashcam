@@ -65,8 +65,8 @@
 
 /* Update-frequency tracker. */
 // Maximum error before a measurement is marked as `delayed` 
-// ==> (measurement * error) > target ==> `delayed`
-#define FPSREDUCER_MAX_DELAY 0.8
+// ==> measurement > target * max_delay ==> `delayed`
+#define FPSREDUCER_MAX_DELAY 1.125
 // Number of measurements used to determine if frequency needs to be reduced
 #define FPSREDUCER_MEASUREMENTS 10
 // Maximum number of measurements which are allowed to be delayed
@@ -125,116 +125,120 @@ void FlashCamPLL::resetGPIO(){
 
 int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
 
-    // get CPU-GPU offset
-    uint64_t offset_interval;
-     int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
-    
-    // get frametimings in CPU & GPU space.
-    uint64_t t_frame_gpu = buffertime;
-    uint64_t t_frame_cpu = buffertime + offset;
-    
-    //correct pll-period toward frames with pll-divider
-    float pll_fpsperiod = settings->pll_period / settings->pll_divider;
-    
-    // Validate that update rate is close to set frequency. If not, frequency is too high, hence no lock can be obtained.
-    // In such a case the target frequency should be adjusted to a more proper value.
-    // As an adjustment of the PWM-system may take too much time, it is not updated. 
-    // Instead, the PLL mechanism is tricked to think that the PWM sign al runs half the frequency.
+    if (settings->pll_enabled) {    
+        // get CPU-GPU offset
+        uint64_t offset_interval;
+         int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
         
-    // remove old value
-    fpsreducer_sum -= fpsreducer_tracker[fpsreducer_idx];
-    // set new value
-    fpsreducer_tracker[fpsreducer_idx] = (((t_frame_gpu - fpsreducer_prev) * FPSREDUCER_MAX_DELAY) >= pll_fpsperiod ) ? 1 : 0; 
-    fpsreducer_sum += fpsreducer_tracker[fpsreducer_idx];   
-    // check reset
-    if ( fpsreducer_sum >= FPSREDUCER_MAX_DELAYED ) {
-        //reduce frequency
-        settings->pll_period  = settings->pll_period * 2;
-        settings->pll_fpsfreq = settings->pll_fpsfreq / 2;
-        //reset tracker
-        for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
-            fpsreducer_tracker[i] = 0;
-        fpsreducer_idx  = 0;
-        fpsreducer_sum  = 0;
-        fpsreducer_prev = 0;
-    } else {
-        //set new index/value
-        fpsreducer_idx  = (fpsreducer_idx + 1) % FPSREDUCER_MEASUREMENTS;
-        fpsreducer_prev = t_frame_gpu;
-    }    
-    fprintf(stdout, "PLLtracker: sum=%df  / %d \n", fpsreducer_sum, FPSREDUCER_MAX_DELAYED);
+        // get frametimings in CPU & GPU space.
+        uint64_t t_frame_gpu = buffertime;
+        uint64_t t_frame_cpu = buffertime + offset;
+        
+        //correct pll-period toward frames with pll-divider
+        float pll_fpsperiod = settings->pll_period / settings->pll_divider;
+        
+        // Validate that update rate is close to set frequency. If not, frequency is too high, hence no lock can be obtained.
+        // In such a case the target frequency should be adjusted to a more proper value.
+        // As an adjustment of the PWM-system may take too much time, it is not updated. 
+        // Instead, the PLL mechanism is tricked to think that the PWM sign al runs half the frequency.
+            
+        if (settings->pll_fpsreducer_enabled) {
+            // remove old value
+            fpsreducer_sum -= fpsreducer_tracker[fpsreducer_idx];
+            // set new value
+            fpsreducer_tracker[fpsreducer_idx] = ((t_frame_gpu - fpsreducer_prev) > (pll_fpsperiod * FPSREDUCER_MAX_DELAY)) ? 1 : 0; 
+            fpsreducer_sum += fpsreducer_tracker[fpsreducer_idx];   
+            // check reset
+            if ( fpsreducer_sum >= FPSREDUCER_MAX_DELAYED ) {
+                //reduce frequency 
+                // --> factor 2 so we can still sync with PWM
+                settings->pll_period  = settings->pll_period  * 2;
+                settings->pll_fpsfreq = settings->pll_fpsfreq / 2;
+                //reset tracker
+                for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
+                    fpsreducer_tracker[i] = 0;
+                fpsreducer_idx  = 0;
+                fpsreducer_sum  = 0;
+                fpsreducer_prev = 0;
+            } else {
+                //set new index/value
+                fpsreducer_idx  = (fpsreducer_idx + 1) % FPSREDUCER_MEASUREMENTS;
+                fpsreducer_prev = t_frame_gpu;
+            }    
+            fprintf(stdout, "PLLtracker: %2d/%2d \n", fpsreducer_sum, FPSREDUCER_MAX_DELAYED);
+        }
+        
+        // number of pulses since starting PPL
+        uint32_t k           = ((t_frame_cpu - settings->pll_starttime) / pll_fpsperiod );
+        
+        // timestamp of last pulse.
+        // NOTE: this assumes that the PWM-clock and GPU-clock do not have drift!
+        uint64_t t_lastpulse = settings->pll_starttime + (uint64_t)(k * pll_fpsperiod);
+        
+        // difference with frame:
+        int64_t diff         = t_frame_cpu - t_lastpulse + settings->pll_offset;
+        
+        // if difference > period/2 ( or 2*difference > period)
+        //  --> captured image is too early: pulse for frame is in the future. 
+        //    --> hence difference should be negative
+        if ( (diff*2) > pll_fpsperiod )
+            diff = diff - pll_fpsperiod;
+        
+        /*
+        // We have locked the Camera with PWM if the difference between those is smaller
+        //  than half of the (largest) computed intervals of either the starttime of PWM
+        //  or the accuracy of the CPU-GPU clock offset.
+        // When the computed difference is smaller, further optimisation is not usefull, hence return.
+        uint64_t locklimit = offset_interval / 2.0;
+        if ( settings->pll_startinterval > offset_interval)
+            locklimit = settings->pll_startinterval / 2.0;
+        */
+        
+        // Crude update rule...
+        float updaterate  = settings->pll_fpsfreq / 4.0f;
+        float nframerate  = settings->pll_fpsfreq + (updaterate * (diff / pll_fpsperiod));
 
-    // number of pulses since starting PPL
-    uint32_t k           = ((t_frame_cpu - settings->pll_starttime) / pll_fpsperiod );
-    
-    // timestamp of last pulse.
-    // NOTE: this assumes that the PWM-clock and GPU-clock do not have drift!
-    uint64_t t_lastpulse = settings->pll_starttime + (uint64_t)(k * pll_fpsperiod);
-    
-    // difference with frame:
-    int64_t diff         = t_frame_cpu - t_lastpulse + settings->pll_offset;
-    
-    // if difference > period/2 ( or 2*difference > period)
-    //  --> captured image is too early: pulse for frame is in the future. 
-    //    --> hence difference should be negative
-    if ( (diff*2) > pll_fpsperiod )
-        diff = diff - pll_fpsperiod;
-    
-    /*
-    // We have locked the Camera with PWM if the difference between those is smaller
-    //  than half of the (largest) computed intervals of either the starttime of PWM
-    //  or the accuracy of the CPU-GPU clock offset.
-    // When the computed difference is smaller, further optimisation is not usefull, hence return.
-    uint64_t locklimit = offset_interval / 2.0;
-    if ( settings->pll_startinterval > offset_interval)
-        locklimit = settings->pll_startinterval / 2.0;
-    */
-    
-    // Crude update rule...
-    float updaterate  = settings->pll_fpsfreq / 4.0f;
-    float nframerate  = settings->pll_fpsfreq + (updaterate * (diff / pll_fpsperiod));
+        // What does this crude update rule do?
+        // 1) (diff / pll_fpsperiod) -> computes the error (or pwm-camera difference) as a percentage [0.0 - 1.0] of the original frequency.
+        //      as `diff` is max 50% of the period, the error is between 0 and 50%.
+        //      as `diff` can be negative, the error lies in -50% to 50%.
+        // 2) updaterate             -> scaler multiplied with the error which adjust the target frequency.
+        //      experiments showed that a fixed error accros different frequencies was not able to lock high rates.
+        //       hence the update rate is dependent on the set frequency.
+        // 3) In effect, the target frequency is adjusts with a range [ -0.125*f to +0.125*f ] where `f` is the target frequency.
+        // 4) The framerate is set based on the target instead of a previous result as the system otherwise goes out of control
+        
+        
+        
+        // check if update falls within accuracy.
+        unsigned int oldf = params->framerate * FPS_DENOMINATOR;
+        unsigned int newf = nframerate * FPS_DENOMINATOR;
+        
+        if ( oldf == newf) {
+            // no update
+            fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ] - same rate\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
+            return Status::mmal_to_int(MMAL_SUCCESS);
+        } else {
+            // update
+            params->framerate = nframerate;
+        }
+        
+        
+        if (settings->verbose) {
+            fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ]\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
+        }
 
-    // What does this crude update rule do?
-    // 1) (diff / pll_fpsperiod) -> computes the error (or pwm-camera difference) as a percentage [0.0 - 1.0] of the original frequency.
-    //      as `diff` is max 50% of the period, the error is between 0 and 50%.
-    //      as `diff` can be negative, the error lies in -50% to 50%.
-    // 2) updaterate             -> scaler multiplied with the error which adjust the target frequency.
-    //      experiments showed that a fixed error accros different frequencies was not able to lock high rates.
-    //       hence the update rate is dependent on the set frequency.
-    // 3) In effect, the target frequency is adjusts with a range [ -0.125*f to +0.125*f ] where `f` is the target frequency.
-    // 4) The framerate is set based on the target instead of a previous result as the system otherwise goes out of control
-    
-    
-    
-    // check if update falls within accuracy.
-    unsigned int oldf = params->framerate * FPS_DENOMINATOR;
-    unsigned int newf = nframerate * FPS_DENOMINATOR;
-    
-    if ( oldf == newf) {
-        // no update
-        fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ] - same rate\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
-        return Status::mmal_to_int(MMAL_SUCCESS);
-    } else {
-        // update
-        params->framerate = nframerate;
+        //create rationale
+        MMAL_RATIONAL_T f;        
+        f.den = FPS_DENOMINATOR;
+        f.num = (unsigned int) (params->framerate * f.den);
+        
+        //update port.
+        MMAL_STATUS_T status;
+        MMAL_PARAMETER_FRAME_RATE_T param = {{MMAL_PARAMETER_VIDEO_FRAME_RATE, sizeof(param)}, f};
+        if ((status = mmal_port_parameter_set(port, &param.hdr)) != MMAL_SUCCESS)
+            return Status::mmal_to_int(status);
     }
-    
-    
-    if (settings->verbose) {
-        fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ]\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
-    }
-
-    //create rationale
-    MMAL_RATIONAL_T f;        
-    f.den = FPS_DENOMINATOR;
-    f.num = (unsigned int) (params->framerate * f.den);
-    
-    //update port.
-    MMAL_STATUS_T status;
-    MMAL_PARAMETER_FRAME_RATE_T param = {{MMAL_PARAMETER_VIDEO_FRAME_RATE, sizeof(param)}, f};
-    if ((status = mmal_port_parameter_set(port, &param.hdr)) != MMAL_SUCCESS)
-        return Status::mmal_to_int(status);
-    
     //succes!
     return Status::mmal_to_int(MMAL_SUCCESS);
 }
@@ -567,10 +571,11 @@ int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, uint64_t *interval) {
 
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
-    settings->pll_enabled       = 0;
-    settings->pll_divider       = 1;                            // use camera frequency.
-    settings->pll_offset        = 0;
-    settings->pll_pulsewidth    = 0.5f / VIDEO_FRAME_RATE_NUM;  // 50% duty cycle with default framerate
+    settings->pll_enabled               = 0;
+    settings->pll_divider               = 1;                            // use camera frequency.
+    settings->pll_offset                = 0;                            // PWM start == Frame start
+    settings->pll_pulsewidth            = 0.5f / VIDEO_FRAME_RATE_NUM;  // 50% duty cycle with default framerate
+    settings->pll_fpsreducer_enabled    = 1;                            // Allow PLL to reduce frequency when needed
 
     //internals
     settings->pll_starttime     = 0;
@@ -584,6 +589,7 @@ void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stderr, "PLL Divider   : %d\n", settings->pll_divider);
     fprintf(stderr, "PLL Offset    : %d us\n", settings->pll_offset);
     fprintf(stderr, "PLL Pulsewidth: %0.5f ms\n", settings->pll_pulsewidth);
+    fprintf(stderr, "PLL FPSRedycer: %d\n", settings->pll_fpsreducer_enabled);
 }
 
 
