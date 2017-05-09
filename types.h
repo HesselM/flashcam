@@ -87,17 +87,17 @@ typedef struct {
     unsigned int cameranum;                     // Index of used camera. 
     MMAL_PARAM_EXPOSUREMODE_T exposuremode;     // Exposure mode (e.g. night). See: MMAL_PARAM_EXPOSUREMODE_T;
     MMAL_PARAM_EXPOSUREMETERINGMODE_T metering; // Exposure metering. See: MMAL_PARAM_EXPOSUREMETERINGMODE_Tl;
-    float framerate;                            // Frame rate (fps):    0.0f to    120.0f   -> Updated to real fps when PLL is enabled.
+    float framerate;                            // Frame rate (fps):    0.0f to    120.0f   (Updated to real fps when PLL is enabled.
     int stabilisation;                          // Video Stabilisation. On (1) or Off (0);
     MMAL_PARAMETER_DRC_STRENGTH_T drc;          // Dynamic Range Compression. See: MMAL_PARAMETER_DRC_STRENGTH_T;
     int sharpness;                              // Image Sharpness : -100    to    100
     int contrast;                               // Image Contrast  : -100    to    100
     int brightness;                             // Image Brightness:    0    to    100
     int saturation;                             // Image Saturation: -100    to    100
-    unsigned int iso;                           // ISO             :    0    to   1600    (NOTE: 800+ might not work; 0=auto)
-    unsigned int shutterspeed;                  // Shutterspeed    :    0    to 330000    (microseconds; fps in VideoMode)
-    float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
-    float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f (NOTE: Only used when AWB=OFF)
+    unsigned int iso;                           // ISO             :    0    to   1600      (800+ might not work; 0=auto)
+    unsigned int shutterspeed;                  // Shutterspeed    :    0    to 330000      (microseconds; limited by fps in VideoMode)
+    float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f   (Only used when AWB=OFF)
+    float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f   (Only used when AWB=OFF)
     int denoise;                                // Image Denoiseing. On (1) or Off (0);
 } FLASHCAM_PARAMS_T;
 
@@ -115,10 +115,13 @@ typedef struct {
 #ifdef BUILD_FLASHCAM_WITH_PLL  
     // PLL: Phase Lock Loop ==> Allows the camera (in videomode) to send lightpulse/flash upon frameexposure.
     //                          The Raspberry firmware only support flash when in capture mode, hence this option.
-    unsigned int pll_enabled;                   // Use PLL          : On (1) or Off (0)
-    unsigned int pll_divider;                   // framerate / pll_divider = frequency of PLL signal
-    unsigned int pll_offset;                    // Synchronisation moment; time between start of frame -> start of pwm in microseconds (us)
-    float pll_pulsewidth;                       // Pulse width (ms) : 0 to 1/frequency   (NOTE: will be rounded according to available accuracy).
+    unsigned int pll_enabled;                   // Use PLL            : On (1) or Off (0)
+    unsigned int pll_divider;                   // Frequency divider  : > 1                 (framerate / pll_divider = frequency of PLL signal)
+    int pll_offset;                             // PWM / Camera offset: > 0                 (microseconds; target time between start of frame -> start of pwm
+    float pll_pulsewidth;                       // Pulse width (ms)   : 0 to 1/frequency    (will be rounded according to available accuracy).
+    unsigned int pll_fpsreducer_enabled;        // Use FPS-reducer    : On (1) or Off (0)
+                                                // --> Tracks real fps of system and reduces the target fps if they do not match
+                                                //     Disabling the reducer increases processing speed, but if the target fps is too high, no lock can be obtained.
     
     //INTERNAL VARIABLES. CANNOT BE SET/READ. USED FOR PLL TRACKING
     uint64_t pll_starttime;                     // [ starttime of PLL in us ]

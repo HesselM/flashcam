@@ -162,9 +162,10 @@ public:
     int getPLLPulseWidth( float *pulsewidth );
     int setPLLDivider( unsigned int  divider );
     int getPLLDivider( unsigned int *divider );
-    int setPLLOffset( unsigned int  offset );
-    int getPLLOffset( unsigned int *offset );
-
+    int setPLLOffset( int  offset );
+    int getPLLOffset( int *offset );
+    int setPLLFPSReducerEnabled( unsigned int  enabled );
+    int setPLLFPSReducerEnabled( unsigned int *enabled);
     
     /*
      * These MMAL_PARAMS_XXXXXX paramter-values are taken from 

@@ -1023,6 +1023,8 @@ int FlashCam::setPLLDivider( unsigned int  divider ){
         return Status::mmal_to_int(MMAL_EINVAL);
     }
 #ifdef BUILD_FLASHCAM_WITH_PLL
+    if (divider < 1) 
+        divider = 1;
     _settings.pll_divider = divider;
     return Status::mmal_to_int(MMAL_SUCCESS);
 #else
@@ -1041,12 +1043,7 @@ int FlashCam::getPLLDivider( unsigned int *divider ) {
 #endif        
 }
 
-int FlashCam::setPLLOffset( unsigned int  offset ){    
-    // Is camera active?
-    if (_active) {
-        fprintf(stderr, "%s: Cannot change PLL-offset while camera is active\n", __func__);
-        return Status::mmal_to_int(MMAL_EINVAL);
-    }
+int FlashCam::setPLLOffset( int  offset ){    
 #ifdef BUILD_FLASHCAM_WITH_PLL
     _settings.pll_offset = offset;
     return Status::mmal_to_int(MMAL_SUCCESS);
@@ -1056,12 +1053,33 @@ int FlashCam::setPLLOffset( unsigned int  offset ){
 #endif    
 }
 
-int FlashCam::getPLLOffset( unsigned int *offset ) {
+int FlashCam::getPLLOffset( int *offset ) {
 #ifdef BUILD_FLASHCAM_WITH_PLL
     *offset = _settings.pll_offset;
     return Status::mmal_to_int(MMAL_SUCCESS);
 #else
     fprintf(stderr, "%s: Cannot get PLL-offset. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif        
+}
+
+
+int FlashCam::setPLLFPSReducerEnabled( unsigned int  enabled ) {    
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    _settings.pll_fpsreducer_enabled = enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot set PLL-fpsreducer-mode. PLL not build.\n", __func__);
+    return Status::mmal_to_int(MMAL_ENOSYS);
+#endif    
+}
+
+int FlashCam::getPLLFPSReducerEnabled( unsigned int *enabled ) {
+#ifdef BUILD_FLASHCAM_WITH_PLL
+    *enabled = _settings.pll_fpsreducer_enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+#else
+    fprintf(stderr, "%s: Cannot get PLL-fpsreducer-mode. PLL not build.\n", __func__);
     return Status::mmal_to_int(MMAL_ENOSYS);
 #endif        
 }
