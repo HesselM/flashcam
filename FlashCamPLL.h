@@ -40,35 +40,95 @@
 
 #include "types.h"
 
+
+//Number of samples for the array's for error estimations
+#define FLASHCAM_PLL_JITTER 10
+#define FLASHCAM_PLL_SAMPLES 20
+
+//Locking requirements
+#define FLASHCAM_PLL_LOCK_AVG 0.05f
+#define FLASHCAM_PLL_LOCK_STD 0.02f
+
+/*
+ * FLASHCAM_PLL_PARAMS_T
+ * PLL results and test data. Only user for intern-tracking
+ */
+typedef struct { 
+    //timing
+    float framerate;                        // User set target framerate of camera.
+    float pwm_period;                       // Period of the set PWM signal in microseconds. 
+    uint64_t starttime_gpu;                 // Starttime of PWM-pulse in microseconds (us), determined by the GPU-clock
+    uint64_t startinterval_gpu;             // Accuracy of starttime: starttime \in [starttime, startime+interval]
+    
+    // state:timing
+    uint64_t    last_frametime_gpu;         // Last recorded timestamp of frame.
+    uint64_t    locktime;                   // Timestamp at which PLL was locked.
+    float       pid_framerate;              // Framerate proposed by PID controller.
+    
+    // state:PID
+    float       last_error;                 // Last recorded error value: [-0.5 -- 0.5] * 100 = percentage error of period
+    int64_t     last_error_us;              // Last recorded error value: [-0.5 -- 0.5] * 100 = percentage error of period
+    float       integral;                   // integral of PID tuner
+
+#ifdef PLLTUNE
+    float P;
+    float I;
+    float D;
+#endif
+    
+    //error. All is in microseconds
+    unsigned int error_idx_jitter;                  // jitter index for circular buffers
+    unsigned int error_idx_sample;                  // Sample index for circular buffers
+    float error_sum;                                // sum of contents of `error[]`
+    float error[FLASHCAM_PLL_JITTER];               // Circular buffer. Holds the relative timing error (microseconds) between frame and pwm-pulse.
+    float error_avg_last;                           // copy of last element added to `error_avg[]`
+    float error_avg_sum;                            // sum of contents of `error_avg[]`
+    float error_avg[FLASHCAM_PLL_SAMPLES];          // Circular buffer. Holds the running average error of `error[]` over a window of `FLASHCAM_PLL_SAMPLES_JITTER` elements
+                                                    //      Used for jitter reduction
+    float error_avg_dt_last;                        // copy of last element added to `error_avg_dt[]`
+    float error_avg_dt_sum;                         // sum of contents of `error_avg_dt[]`
+    float error_avg_dt[FLASHCAM_PLL_SAMPLES];       // Circular buffer. Holds the derivative of `error_avg[]`
+                                                    //      When stable, value should be close to 0. 
+    float error_avg_dt_avg_last;                    // copy of last element added to `error_avg_dt_avg[]`
+    float error_avg_dt_avg_sum;                     // sum of contents of `error_avg_dt_avg[]`
+    float error_avg_dt_avg[FLASHCAM_PLL_SAMPLES];   // Circular buffer. Holds the running average error of `error_avg_dt[]` over a window of `FLASHCAM_PLL_SAMPLES_AVGDT` elements.
+                                                    //      Used to determine stability. When zero, error does not deviate and hence stays constant (or oscilates)   
+    float error_avg_std_last;                       // copy of last element added to `error_avg_std[]`
+    float error_avg_std_sum;                        // sum of contents of `error_avg_std[]`
+    float error_avg_std[FLASHCAM_PLL_SAMPLES];      // Circular buffer. Holds the standard deviation of `error_avg[]`
+                                                    //      Used to determine stability. When (close to) zero, error-variation is constant.  
+    //Misc
+    bool uselog;                                    // Flag to indicate if logfile is used.
+} FLASHCAM_PLL_PARAMS_T;
+
+
 class FlashCamPLL
 {
     
 private:
-    bool          _error        = false;
-    bool          _active       = false;
-    MMAL_PORT_T **_videoport    = NULL;
-
-    //triggers resetpin. Implemented for debugging purposes. 
+    bool                    _error  = false;
+    bool                    _active = false;
+    
+    //Reset GPIO & PWM 
     void resetGPIO();
-        
-public:   
+    
+    //reset PLL parameters
+    void clearParams();
+public:       
     // Constructor / Destructor
     FlashCamPLL();
     ~FlashCamPLL();
-    
-    int start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
-    int stop(  FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
 
-    //get (running average) timeoffset CPU-GPU within a specified accuracy
-    static int64_t getGPUoffset(MMAL_PORT_T *videoport);
-    static int64_t getGPUoffset(MMAL_PORT_T *videoport, uint64_t *interval);
+    //start/stop PLL mechanism. Functions are invoked when camera is started/stopped in FlashCam.
+    int start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
+    int stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
     
     //update Lock. This function is a callback from FlashCam when a frame is recieved.
-    static int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t time);
+    static int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t pts);
     
     //settings..
     static void getDefaultSettings( FLASHCAM_SETTINGS_T *settings );
-    static void printSettings( FLASHCAM_SETTINGS_T *settings );
+    static void printSettings( FLASHCAM_SETTINGS_T *settings );    
 };
 
 

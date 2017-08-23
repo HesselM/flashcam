@@ -99,22 +99,23 @@ private:
     MMAL_STATUS_T getParameterRational( int id , int *val );
     
     // -- SINGLETON --    
-    // Constructor / Destructor
-    FlashCam();
-    ~FlashCam();
     // Copy & assign overide: not implemented as a singleton cannot have copies.
     FlashCam(FlashCam const&);
     void operator=(FlashCam const&);
-    // ---------------
+    // Constructor / Destructor
+    FlashCam();
+    ~FlashCam();
     
 public:
-    
     // -- SINGLETON --
     static FlashCam& get() {
         static FlashCam cam;
         return cam;
     }
     // ---------------
+    
+    //all to default values
+    void clear();
     
     // capture image
     int startCapture();
@@ -123,9 +124,7 @@ public:
     //callback options --> for when a full frame is received
     void setFrameCallback(FLASHCAM_CALLBACK_T callback);
     void resetFrameCallback();
-    
-
-    
+        
     /******************************************/
     /*********   GETTERS / SETTERS  ***********/
     /******************************************/
@@ -154,7 +153,9 @@ public:
     int setSettingCaptureMode( FLASHCAM_MODE_T  mode );
     int getSettingCaptureMode( FLASHCAM_MODE_T *mode );
 
-    
+    int setSettingSensorMode( unsigned int  sensormode );
+    int getSettingSensorMode( unsigned int *sensormode );
+
     //PLL
     int setPLLEnabled( unsigned int  enabled );
     int getPLLEnabled( unsigned int *enabled );
@@ -166,6 +167,13 @@ public:
     int getPLLOffset( int *offset );
     int setPLLFPSReducerEnabled( unsigned int  enabled );
     int getPLLFPSReducerEnabled( unsigned int *enabledv);
+    //get copy of PLL parameters
+    // When `PLLTUNE` is defined, this function returns a pointer to the internal structure, otherwise it returns a deep-copy.
+    void getPLLParams( FLASHCAM_PLL_PARAMS_T** );
+
+#ifdef PLLTUNE
+    FLASHCAM_SETTINGS_T* settings();
+#endif
     
     /*
      * These MMAL_PARAMS_XXXXXX paramter-values are taken from 
@@ -266,6 +274,8 @@ public:
     /*
      * Property:  MMAL_PARAMETER_CAMERA_NUM
      *      < Takes a @ref MMAL_PARAMETER_UINT32_T >
+     *
+     * Note: pri
      */
     int setCameraNum( unsigned int  num );
     int getCameraNum( unsigned int *num );
@@ -449,34 +459,41 @@ public:
     //MMAL_PARAMETER_CAMERA_USE_CASE,           /**< Takes a @ref MMAL_PARAMETER_CAMERA_USE_CASE_T */
     //MMAL_PARAMETER_CAPTURE_STATS_PASS,        /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
     
-    //MMAL_PARAMETER_CAMERA_CUSTOM_SENSOR_CONFIG, /**< Takes a @ref MMAL_PARAMETER_UINT32_T */
-    // https://www.raspberrypi.org/documentation/raspbian/applications/camera.md
-    // status = mmal_port_parameter_set_uint32(camera->control, MMAL_PARAMETER_CAMERA_CUSTOM_SENSOR_CONFIG, mode);
-    //
-    // V1:
-    //Mode Size        Aspect  Frame        FOV     Binning
-    //                 Ratio   rates
-    // 0   automatic   
-    // 1   1920x1080   16:9         1-30fps Partial None
-    // 2   2592x1944    4:3         1-15fps Full    None
-    // 3   2592x1944    4:3    0.1666- 1fps Full    None
-    // 4   1296x972     4:3         1-42fps Full    2x2
-    // 5   1296x730    16:9         1-49fps Full    2x2
-    // 6    640x480     4:3      42.1-60fps Full    2x2 plus skip
-    // 7    640x480     4:3      60.1-90fps Full    2x2 plus skip
-    // 
-    // V2:
-    //Mode Size        Aspect  Frame       FOV     Binning
-    //                 Ratio   rates
-    //0	automatic selection
-    // 1   1920x1080   16:9    0.1-30fps   Partial None
-    // 2   3280x2464    4:3    0.1-15fps   Full    None
-    // 3   3280x2464    4:3    0.1-15fps   Full    None
-    // 4   1640x1232    4:3    0.1-40fps   Full    2x2
-    // 5   1640x922    16:9    0.1-40fps   Full    2x2
-    // 6   1280x720    16:9     40-90fps   Partial 2x2
-    // 7    640x480     4:3     40-90fps   Partial 2x2
     
+    /*
+     * Property: MMAL_PARAMETER_CAMERA_CUSTOM_SENSOR_CONFIG
+     *      < Takes a @ref MMAL_PARAMETER_UINT32_T >
+     *
+     * Note: effect depends on sensor type.
+     *       https://www.raspberrypi.org/documentation/raspbian/applications/camera.md
+     *
+     * V1 (OV5647):
+     *      Mode Size       Aspect  Frame      FOV      Binning
+     *                      Ratio   rates
+     *      0    automatic   
+     *      1    1920x1080  16:9      1-30fps  Partial  None
+     *      2    2592x1944   4:3      1-15fps  Full     None
+     *      3    2592x1944   4:3   0.16- 1fps  Full     None
+     *      4    1296x972    4:3      1-42fps  Full     2x2
+     *      5    1296x730   16:9      1-49fps  Full     2x2
+     *      6     640x480    4:3   42.1-60fps  Full     2x2 plus skip
+     *      7     640x480    4:3   60.1-90fps  Full     2x2 plus skip
+     * 
+     * V2 (IMX219):
+     *      Mode Size       Aspect  Frame      FOV      Binning
+     *                      Ratio   rates
+     *      0	 automatic
+     *      1    1920x1080  16:9    0.1-30fps  Partial  None
+     *      2    3280x2464   4:3    0.1-15fps  Full     None
+     *      3    3280x2464   4:3    0.1-15fps  Full     None
+     *      4    1640x1232   4:3    0.1-40fps  Full     2x2
+     *      5    1640x922   16:9    0.1-40fps  Full     2x2
+     *      6    1280x720   16:9     40-90fps  Partial  2x2
+     *      7     640x480    4:3     40-90fps  Partial  2x2
+     */
+    int setSensorMode ( unsigned int  mode );
+    int getSensorMode ( unsigned int *mode );
+        
     //MMAL_PARAMETER_ENABLE_REGISTER_FILE,      /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
     //MMAL_PARAMETER_REGISTER_FAIL_IS_FATAL,    /**< Takes a @ref MMAL_PARAMETER_BOOLEAN_T */
     //MMAL_PARAMETER_CONFIGFILE_REGISTERS,      /**< Takes a @ref MMAL_PARAMETER_CONFIGFILE_T */

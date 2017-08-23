@@ -38,16 +38,21 @@
 #include "FlashCamPLL.h"
 #include "FlashCam.h"
 
+#include <iostream>
+#include <fstream>
+#include <string>
+
 #include <stdio.h>
 #include <wiringPi.h>
 #include <math.h>
 
 #include "interface/mmal/util/mmal_util_params.h"
 
+
 //PLL settings
 
 // 19.2Mhz is seemingly the basefrequency of the GPIO?
-// -> https://www.raspberrypi.org/documentation/hardware/raspberrypi/schematics/RPI-ZERO-V1_3_reduced.pdf
+// -> https://www.raspberrypi.org/documentation/hardware/raspberrypi/schematics/Raspberry-Pi-Zero-V1.3-Schematics.pdf
 // -> https://pinout.xyz/pinout/gpclk
 // -> https://raspberrypi.stackexchange.com/questions/4906/control-hardware-pwm-frequency
 // -> TODO: function to determine real frequency
@@ -57,26 +62,60 @@
 // ( equals GPIO-18 = hardware PWM )
 #define PLL_PIN 1
 
-// WiringPi pin to which reset is connected
-#define RESET_PIN 0
-
 // Accuracy/denominator for fps-update.
 #define FPS_DENOMINATOR 256
 
 /* Update-frequency tracker. */
 // Maximum error before a measurement is marked as `delayed` 
 // ==> measurement > target * max_delay ==> `delayed`
-#define FPSREDUCER_MAX_DELAY 1.125
+#define FPSREDUCER_MAX_DELAY 1.4
 // Number of measurements used to determine if frequency needs to be reduced
-#define FPSREDUCER_MEASUREMENTS 10
+#define FPSREDUCER_MEASUREMENTS 15
 // Maximum number of measurements which are allowed to be delayed
 // NOTE: should be <= FPSREDUCER_MEASUREMENTS and >= 2
-#define FPSREDUCER_MAX_DELAYED 3
+#define FPSREDUCER_MAX_DELAYED 12
 // state-trackers
 static unsigned int  fpsreducer_idx;
 static unsigned int  fpsreducer_sum;
-static unsigned char fpsreducer_tracker[FPSREDUCER_MEASUREMENTS];
+static unsigned char fpsreducer_arr[FPSREDUCER_MEASUREMENTS];
 static uint64_t      fpsreducer_prev;
+
+//trackers for PID control
+//static float         error_prev;
+//static uint64_t      frametime_gpu_prev;
+
+//#define PID_SAMPLES  40
+//static unsigned int error_idx;
+// holds error per frame-updates
+//static float        error_arr[PID_SAMPLES];
+// holds average error over last `PID_SAMPLES` frame updates
+//static float        error_avg_arr[PID_SAMPLES];
+// holds standard deviation of error over last `PID_SAMPLES` frame updates
+//static float        error_std_arr[PID_SAMPLES];
+
+// Locking values: 
+//   if the average values of the respectively `error_avg` and the derivative of
+//   `error_std` are within the set bound, the system has locked the camera to PWM
+//#define PID_LOCK_ERRORAVG  0.05f
+//#define PID_LOCK_ERRORDSTD 0.02f
+//static uint64_t     t_locked;
+
+//step response testing?
+//#define STEPRESPONSE
+#ifdef STEPRESPONSE
+static unsigned int stephold    = 0;
+static unsigned int stepholdmax = 30; //number of frames at which a step is not changed
+static unsigned int stepidx     = 0;
+static unsigned int steps       = 4;  //number of steps in array
+static float        steps_arr[] = {140.0f, 158.0f, 140.0f, 139.5f}; //steps
+#endif
+
+//logfile
+std::ofstream logfile; 
+
+//private & static parameterlist
+static FLASHCAM_PLL_PARAMS_T _pllparams;
+
 
 FlashCamPLL::FlashCamPLL() {
     _error   = false;
@@ -91,143 +130,287 @@ FlashCamPLL::FlashCamPLL() {
         fprintf(stderr, "%s: Cannot init WiringPi.\n", __func__);
         _error = true;
     }
-        
+    
+    //clear params
+    clearParams();
+    
     // Set pin-functions
     pinMode( PLL_PIN, PWM_OUTPUT );
-    pinMode( RESET_PIN, OUTPUT );
     resetGPIO();
 }
 
 FlashCamPLL::~FlashCamPLL() {
-    // stop pwm
-    pwmWrite(PLL_PIN, 0);    
-    // reset HW
     resetGPIO();
 }
 
 void FlashCamPLL::resetGPIO(){
-    digitalWrite(RESET_PIN, 1);
-    usleep(100);
-    digitalWrite(RESET_PIN, 0);
+    pwmWrite(PLL_PIN, 0);    
 }
 
-// -> graph in CPU timeframe
-// every iteration:
-// - fps 
-// - diff
-// - k
-// - update / lock / return
-// - frametime
-// - offset + interval
-// once:
-// - starttime + interval
-// - 
-
-int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t buffertime) {
-
-    if (settings->pll_enabled) {    
-        // get CPU-GPU offset
-        uint64_t offset_interval;
-         int64_t offset = FlashCamPLL::getGPUoffset(port, &offset_interval);
+int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t pts) {
+    
+    if (settings->pll_enabled) {
         
-        // get frametimings in CPU & GPU space.
-        uint64_t t_frame_gpu = buffertime;
-        uint64_t t_frame_cpu = buffertime + offset;
+#ifndef STEPRESPONSE
+// TIMING UPDATES
+        // get frametimings in GPU domain.
+        uint64_t frametime_gpu  = pts;
         
+        //determine difference
+        uint64_t dt_frametime_gpu = 0;
+        if (_pllparams.last_frametime_gpu != 0)
+            dt_frametime_gpu = frametime_gpu - _pllparams.last_frametime_gpu;
+        //update last measurements
+        _pllparams.last_frametime_gpu = frametime_gpu;
+                
         //correct pll-period toward frames with pll-divider
-        float pll_fpsperiod = settings->pll_period / settings->pll_divider;
+        float frame_period = _pllparams.pwm_period / settings->pll_divider;
         
+// FPS VERIFICATIOM
+        /*
         // Validate that update rate is close to set frequency. If not, frequency is too high, hence no lock can be obtained.
         // In such a case the target frequency should be adjusted to a more proper value.
         // As an adjustment of the PWM-system may take too much time, it is not updated. 
         // Instead, the PLL mechanism is tricked to think that the PWM sign al runs half the frequency.
-            
         if (settings->pll_fpsreducer_enabled) {
-            // remove old value
-            fpsreducer_sum -= fpsreducer_tracker[fpsreducer_idx];
+            // remove old value from circular buffer / sum
+            fpsreducer_sum -= fpsreducer_arr[fpsreducer_idx];
             // set new value
-            fpsreducer_tracker[fpsreducer_idx] = ((t_frame_gpu - fpsreducer_prev) > (pll_fpsperiod * FPSREDUCER_MAX_DELAY)) ? 1 : 0; 
-            fpsreducer_sum += fpsreducer_tracker[fpsreducer_idx];   
+            fpsreducer_arr[fpsreducer_idx] = ((frametime_gpu - fpsreducer_prev) > (pll_fpsperiod * FPSREDUCER_MAX_DELAY)) ? 1 : 0; 
+            fpsreducer_sum += fpsreducer_arr[fpsreducer_idx];   
             // check reset
             if ( fpsreducer_sum >= FPSREDUCER_MAX_DELAYED ) {
                 //reduce frequency 
                 // --> factor 2 so we can still sync with PWM
-                settings->pll_period  = settings->pll_period  * 2;
-                settings->pll_fpsfreq = settings->pll_fpsfreq / 2;
+                settings->period  = settings->period  * 2;
+                _pllparams.framerate = _pllparams.framerate / 2;
                 //reset tracker
                 for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
-                    fpsreducer_tracker[i] = 0;
+                    fpsreducer_arr[i] = 0;
                 fpsreducer_idx  = 0;
                 fpsreducer_sum  = 0;
                 fpsreducer_prev = 0;
             } else {
                 //set new index/value
                 fpsreducer_idx  = (fpsreducer_idx + 1) % FPSREDUCER_MEASUREMENTS;
-                fpsreducer_prev = t_frame_gpu;
-            }    
-            fprintf(stdout, "PLLtracker: %2d/%2d \n", fpsreducer_sum, FPSREDUCER_MAX_DELAYED);
+                fpsreducer_prev = frametime_gpu;
+            }   
+            //if (settings->verbose)
+            //    fprintf(stdout, "PLLtracker: %2d/%2d \n", fpsreducer_sum, FPSREDUCER_MAX_DELAYED);
         }
+        */
+// ERROR COMPUTATION
+
+        // Number of pulses since starting PWM signal. 
+        // NOTE: Computation assumes that the period of the PWM signal equals the period of the framerate.
+        //          This correction is done a couple a lines up. ^^
+        uint32_t k = ((frametime_gpu - _pllparams.starttime_gpu) / frame_period );
+
+        // Timestamp of last pulse.
+        // NOTE: this assumes that the PWM-clock and GPU-clock do not have drift
+        uint64_t last_pulsetime_gpu = _pllparams.starttime_gpu + (uint64_t)(k * frame_period);
         
-        // number of pulses since starting PPL
-        uint32_t k           = ((t_frame_cpu - settings->pll_starttime) / pll_fpsperiod );
+        // (Percentual) error with respect to the (corrected) PWM-period.
+        // NOTE: frametime_gpu > last_pulsetime_gpu.
+        int64_t error_us = frametime_gpu - last_pulsetime_gpu + settings->pll_offset;
+        float error      = error_us / frame_period;
         
-        // timestamp of last pulse.
-        // NOTE: this assumes that the PWM-clock and GPU-clock do not have drift!
-        uint64_t t_lastpulse = settings->pll_starttime + (uint64_t)(k * pll_fpsperiod);
-        
-        // difference with frame:
-        int64_t diff         = t_frame_cpu - t_lastpulse + settings->pll_offset;
-        
-        // if difference > period/2 ( or 2*difference > period)
+        // if error > 50%
         //  --> captured image is too early: pulse for frame is in the future. 
-        //    --> hence difference should be negative
-        if ( (diff*2) > pll_fpsperiod )
-            diff = diff - pll_fpsperiod;
+        //    --> So assume we are correcting for the future-pulse
+        if ( error > 0.5 ) {
+            error    = error - 1;
+            error_us = error * frame_period;
+        }
+    
+// LOCK VERIFICATION
         
+        // When the system has locked the Camera and PWM signal and the current
+        //  error is smaller then the minimum system error, no update to the GPU
+        //  is send. This ensures that we do not flood the GPU with updates if
+        //  those are not needed.
+        // The minimal system error is determined by the starttime-interval and
+        //  the interval in which the cpu-gpu timeframe conversion is done.
+
+        //locked?
         /*
-        // We have locked the Camera with PWM if the difference between those is smaller
-        //  than half of the (largest) computed intervals of either the starttime of PWM
-        //  or the accuracy of the CPU-GPU clock offset.
-        // When the computed difference is smaller, further optimisation is not usefull, hence return.
-        uint64_t locklimit = offset_interval / 2.0;
-        if ( settings->pll_startinterval > offset_interval)
-            locklimit = settings->pll_startinterval / 2.0;
+        if (settings->pll_locked > 0) {
+            uint64_t err_abs = abs(error_us);
+            if (err_abs < settings->pll_startinterval_gpu) {
+                //error is within bounds, so return
+#ifdef PLLTUNE
+                settings->pll_tuning_update = 0;
+#endif
+                return Status::mmal_to_int(MMAL_SUCCESS);
+            } else {
+                // We lost our lock! reset.
+                error_idx                    = 0;
+                error_prev                   = 0;
+                settings->pll_error_sum      = 0;
+                settings->pll_error_avg_sum  = 0;
+                settings->pll_error_std_sum  = 0;
+                settings->pll_error_integral = 0;
+                settings->pll_locked         = 0;
+                settings->pll_locked_std     = 0;
+                for( int i=0; i<PID_SAMPLES; i++) {
+                    error_arr[i]     = 0;
+                    error_avg_arr[i] = 0;
+                    error_std_arr[i] = 0;
+                }
+            }
+        }
         */
         
-        // Crude update rule...
-        float updaterate  = settings->pll_fpsfreq / 4.0f;
-        float nframerate  = settings->pll_fpsfreq + (updaterate * (diff / pll_fpsperiod));
+        //update framerate
+#ifdef PLLTUNE
+        float P = _pllparams.P;
+        float I = _pllparams.I;
+        float D = _pllparams.D;
+#else
+        //parameters after tuning at 30Hz
+        float P = _pllparams.framerate / 4.61f;
+        float I = 0.03f;
+        float D = _pllparams.framerate / 12.0f;
+#endif
+        
+// STABILITY COMPUTATION
+        unsigned int error_idx_jitter = _pllparams.error_idx_jitter;
+        unsigned int error_idx_sample = _pllparams.error_idx_sample;
+        // - error
+        _pllparams.error_sum                            -= _pllparams.error[error_idx_jitter];  // remove earliest error
+        _pllparams.error[error_idx_jitter]               = error_us;                            // replace
+        _pllparams.error_sum                            += _pllparams.error[error_idx_jitter];  // update sum
+        // - avg error
+        _pllparams.error_avg_sum                        -= _pllparams.error_avg[error_idx_sample];
+        _pllparams.error_avg[error_idx_sample]           = _pllparams.error_sum / (float) FLASHCAM_PLL_JITTER;
+        _pllparams.error_avg_sum                        += _pllparams.error_avg[error_idx_sample]; 
+        // - avg-derivate
+        _pllparams.error_avg_dt_sum                     -= _pllparams.error_avg_dt[error_idx_sample];
+        _pllparams.error_avg_dt[error_idx_sample]        = _pllparams.error_avg[error_idx_sample] - _pllparams.error_avg_last;
+        _pllparams.error_avg_dt_sum                     += _pllparams.error_avg_dt[error_idx_sample]; 
+        // - avg-derivate-average
+        _pllparams.error_avg_dt_avg_sum                 -= _pllparams.error_avg_dt_avg[error_idx_sample];
+        _pllparams.error_avg_dt_avg[error_idx_sample]    = _pllparams.error_avg_dt_sum / FLASHCAM_PLL_SAMPLES;
+        _pllparams.error_avg_dt_avg_sum                 += _pllparams.error_avg_dt_avg[error_idx_sample]; 
+        // - avg-std
+        _pllparams.error_avg_std_sum                    -= _pllparams.error_avg_std[error_idx_sample];
+        _pllparams.error_avg_std[error_idx_sample] = 0;
+        for (int i=0; i<FLASHCAM_PLL_SAMPLES; i++) {
+            float error_avg_diff                         = _pllparams.error_avg[i] - _pllparams.error_avg[error_idx_sample];
+            _pllparams.error_avg_std[error_idx_sample]  += error_avg_diff * error_avg_diff;
+        }
+        _pllparams.error_avg_std[error_idx_sample]       = sqrt(_pllparams.error_avg_std[error_idx_sample] / (float) FLASHCAM_PLL_SAMPLES);
+        _pllparams.error_avg_std_sum                    += _pllparams.error_avg_std[error_idx_sample] ; 
+        
 
-        // What does this crude update rule do?
-        // 1) (diff / pll_fpsperiod) -> computes the error (or pwm-camera difference) as a percentage [0.0 - 1.0] of the original frequency.
-        //      as `diff` is max 50% of the period, the error is between 0 and 50%.
-        //      as `diff` can be negative, the error lies in -50% to 50%.
-        // 2) updaterate             -> scaler multiplied with the error which adjust the target frequency.
-        //      experiments showed that a fixed error accros different frequencies was not able to lock high rates.
-        //       hence the update rate is dependent on the set frequency.
-        // 3) In effect, the target frequency is adjusts with a range [ -0.125*f to +0.125*f ] where `f` is the target frequency.
-        // 4) The framerate is set based on the target instead of a previous result as the system otherwise goes out of control
+                
+
+// STABILITY CHECK
+    /*
+        // Standard deviation / osciliation
+        if ( (fabs(settings->pll_error_dstd) < PID_LOCK_ERRORDSTD) && 
+            (settings->pll_locked_std == 0) ) {
+            //Standard deviation / osciliation is stable.
+            settings->pll_locked_std = frametime_gpu - _pllparams.starttime_gpu;
+        }
         
+        // Average + Standard deviation / System
+        if ( (fabs(settings->pll_error_avg_sum/(float)PID_SAMPLES) < PID_LOCK_ERRORAVG ) &&
+             (settings->pll_locked_std > 0) && (settings->pll_locked == 0) ) {
+            //Both stable... system in lock-mode!
+            settings->pll_locked = frametime_gpu - _pllparams.starttime_gpu;
+        }
+    */
         
+// PID UPDATE
+        _pllparams.integral += ((dt_frametime_gpu/1000.0f) * 0.5 * (error + _pllparams.last_error));
+
+        // Compute new rate
+        _pllparams.pid_framerate  = _pllparams.framerate;
+        _pllparams.pid_framerate += P * error;
+        _pllparams.pid_framerate += I * _pllparams.integral;
+        _pllparams.pid_framerate += D * (error - _pllparams.last_error);
         
-        // check if update falls within accuracy.
+        //iteration update
+        _pllparams.error_avg_last           = _pllparams.error_avg[error_idx_sample] ;
+        _pllparams.error_avg_dt_last        = _pllparams.error_avg_dt[error_idx_sample] ;
+        _pllparams.error_avg_dt_avg_last    = _pllparams.error_avg_dt_avg[error_idx_sample] ;
+        _pllparams.error_avg_std_last       = _pllparams.error_avg_std[error_idx_sample] ;
+        _pllparams.error_idx_jitter         = (_pllparams.error_idx_jitter + 1) % FLASHCAM_PLL_JITTER;
+        _pllparams.error_idx_sample         = (_pllparams.error_idx_sample + 1) % FLASHCAM_PLL_SAMPLES;
+        _pllparams.last_error               = error;
+        _pllparams.last_error_us            = error_us;
+        /*
+        if (logfile.is_open()) {
+            logfile << "\n";
+            logfile << "start:" <<  _pllparams.starttime_gpu << " ";
+            logfile << "startinterval:" <<  settings->pll_startinterval_gpu << " ";
+            logfile << "framegpu:" << frametime_gpu << " ";
+            logfile << "framegpup:" << frametime_gpu_prev << " ";
+            logfile << "framegpud:" << dframetime_gpu << " ";
+            logfile << "delayed:" << fpsreducer_sum << " ";
+            logfile << "delayedmax:" << FPSREDUCER_MAX_DELAYED << " ";
+            logfile << "delayedcnt:" << FPSREDUCER_MEASUREMENTS << " ";
+            logfile << "k:" << k << " ";
+            logfile << "pulsecpu:" << t_lastpulse << " ";
+            logfile << "error:" << error << " ";
+            logfile << "errorus:" << error_us << " ";
+            logfile << "pllperiod:" << settings->period << " ";
+            logfile << "pllfrequency:" << _pllparams.framerate << " ";
+            logfile << "plldivider:" << settings->pll_divider << " ";
+            logfile << "nframerate:" << nframerate << " ";
+        }
+*/
+// FPS UPDATE
+
+        //if (settings->verbose)
+        //    fprintf(stdout, "PLLupdate: %f diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz (%9.5f Hz) [ %" PRId64 " ]", P, error_us, 100*error, params->framerate, _pllparams.framerate, settings->pll_startinterval_gpu);
+       
+        // check if update is within accuracy / MMAL stepsize.
         unsigned int oldf = params->framerate * FPS_DENOMINATOR;
-        unsigned int newf = nframerate * FPS_DENOMINATOR;
-        
-        if ( oldf == newf) {
-            // no update
-            fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ] - same rate\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
-            return Status::mmal_to_int(MMAL_SUCCESS);
-        } else {
-            // update
-            params->framerate = nframerate;
-        }
-        
-        
-        if (settings->verbose) {
-            fprintf(stdout, "PLLupdate: diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz [ %" PRId64 " / %" PRId64 " ]\n", diff, 100*(diff / pll_fpsperiod), params->framerate, offset_interval, settings->pll_startinterval);
-        }
+        unsigned int newf = _pllparams.pid_framerate * FPS_DENOMINATOR;
 
+        if ( oldf == newf)
+            return Status::mmal_to_int(MMAL_SUCCESS);
+        
+        // update so that other components use the proper framerate
+        params->framerate = _pllparams.pid_framerate;
+        
+#else   /* STEPRESPONSE */
+        stephold++;
+        
+        //test value for determining max frequency
+        params->framerate = 15;
+        
+        //next frequency?
+        if (stephold == stepholdmax) {
+            stephold = 0;
+            stepidx++;
+            //set frequency
+    //        params->framerate = steps_arr[stepidx % steps];
+        } //else {
+          //  params->framerate += ((stephold % 2)-0.5f) * (10.0f/(float)FPS_DENOMINATOR);
+       // }
+        
+        //logging
+        if (logfile.is_open()) {
+            logfile << "start:" <<  _pllparams.starttime_gpu << " ";
+            logfile << "startinterval:" <<  settings->pll_startinterval_gpu << " ";
+            logfile << "pts:" << pts << " ";
+            logfile << "fps:" << params->framerate  << " ";            
+        }
+                
+        //are we done?
+        if (stephold == 1) {
+            if (logfile.is_open())
+                logfile << "update:0 ";            
+            return Status::mmal_to_int(MMAL_SUCCESS);
+        }
+        if (logfile.is_open())
+            logfile << "update:1 ";            
+        
+#endif  /* STEPRESPONSE */
+                
         //create rationale
         MMAL_RATIONAL_T f;        
         f.den = FPS_DENOMINATOR;
@@ -243,7 +426,7 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     return Status::mmal_to_int(MMAL_SUCCESS);
 }
 
-int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
+int FlashCamPLL::start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
 
     //initialisation error?
     if (_error) {
@@ -355,10 +538,13 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         
         //reset FPS-tracker
         for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
-            fpsreducer_tracker[i] = 0;
-        fpsreducer_idx  = 0;
-        fpsreducer_sum  = 0;
-        fpsreducer_prev = 0;
+            fpsreducer_arr[i] = 0;
+        fpsreducer_idx   = 0;
+        fpsreducer_sum   = 0;
+        fpsreducer_prev  = 0;
+        
+        //reset PLL-paramaters
+        clearParams();
         
         // Setup PWM pin
         pinMode( PLL_PIN, PWM_OUTPUT );
@@ -386,17 +572,17 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         unsigned int pwm_pw     = dutycycle * pwm_range; 
                 
         // Store PLL/PWM settings
-        settings->pll_period    = 1000000.0f / target_frequency;                //us
-        settings->pll_fpsfreq   = target_frequency * settings->pll_divider;     //Hz
+        _pllparams.pwm_period  = 1000000.0f / target_frequency;                //us
+        _pllparams.framerate   = target_frequency * settings->pll_divider;     //Hz
 
         // Show computations?
         if ( settings->verbose ) {            
-            float real_pw  = ( pwm_pw * target_period) / pwm_range;
-            float error    = (settings->pll_pulsewidth - real_pw) / settings->pll_pulsewidth;
+            float real_pw    = ( pwm_pw * target_period) / pwm_range;
+            float error_pw   = (settings->pll_pulsewidth - real_pw) / settings->pll_pulsewidth;
             float resolution = target_period / pwm_range;
             
             fprintf(stdout, "%s: PLL/PWL SETTINGS\n", __func__);
-            fprintf(stdout, " - Framerate     : %f\n", params->framerate);
+            fprintf(stdout, " - Framerate     : %f\n", _pllparams.framerate);
             fprintf(stdout, " - PWM frequency : %f\n", target_frequency);
             fprintf(stdout, " - PWM resolution: %.6f ms\n", resolution );
             fprintf(stdout, " - RPi PWM-clock : %d\n", pwm_clock);
@@ -405,7 +591,7 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             fprintf(stdout, " - PLL Pulsewidth: %.6f ms\n", settings->pll_pulsewidth);
             fprintf(stdout, " - PWM Pulsewidth: %d / %d\n", pwm_pw, pwm_range);
             fprintf(stdout, " -     --> in ms : %.6f ms\n", real_pw);
-            fprintf(stdout, " - Pulsewidth err: %.6f %%\n", error );
+            fprintf(stdout, " - Pulsewidth err: %.6f %%\n", error_pw );
         }
         
         // Set pwm values
@@ -418,22 +604,24 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
         //
         // When investigating the sourcecode of WiringPi, it shows that `pwmSetClock`
         //  already has a buildin-delays of atleast 110us + 1us. 
-        // Therefore `max_locktime` should be at least 111us. 200us is a safe bet.
-        unsigned int max_locktime_us = 200;
+        // Therefore `max_locktime` should be at least 111us.
+        unsigned int max_locktime_us = 300; // --> interval = [0, 189] us.
 
         //loop trackers..
         unsigned int iter = 0;
         struct timespec t1, t2;
-        uint64_t t1_us, t2_us, tdiff;
+        uint64_t t1_us, t2_us, tgpu_us, tdiff;
         
         do {
             // get start-time
             clock_gettime(CLOCK_MONOTONIC, &t1);
-            // set clock
+            // set clock (reset PWM)
             pwmSetClock(pwm_clock);
+            // get GPU time
+            mmal_port_parameter_get_uint64(videoport, MMAL_PARAMETER_SYSTEM_TIME, &tgpu_us);
             // get finished-time
             clock_gettime(CLOCK_MONOTONIC, &t2);
-
+            
             // compute difference..
             t1_us = ((uint64_t) t1.tv_sec) * 1000000 + ((uint64_t) t1.tv_nsec) / 1000;
             t2_us = ((uint64_t) t2.tv_sec) * 1000000 + ((uint64_t) t2.tv_nsec) / 1000;
@@ -442,14 +630,11 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             //track iterations
             iter++;
         } while (tdiff > max_locktime_us);
-  
-        // By now we have a lock and PWM has started!
         
-        // As `pwmSetClock` takes a mimimum time of 111 us to activate the PWM, 
-        //  we can adjust starttime and narrow down the start-interval to more accurate values.
-        settings->pll_starttime     = t1_us + 111;
-        settings->pll_startinterval = tdiff - 111;
-        
+        //set startime estimates
+        _pllparams.starttime_gpu     = tgpu_us - tdiff + 111;
+        _pllparams.startinterval_gpu = tdiff - 111;
+         
         // PLL is activated..
         _active = true;
         if ( settings->verbose ) {
@@ -458,10 +643,10 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
             clock_getres(CLOCK_MONOTONIC, &tres);
             uint64_t res =  ((uint64_t) tres.tv_sec) * 1000000000 + ((uint64_t) tres.tv_nsec);            
             fprintf(stdout, "%s: PLL/PWM start values\n", __func__);
-            fprintf(stdout, " - Starttime     : %" PRIu64 "us\n", settings->pll_starttime);
-            fprintf(stdout, " - Resolution    : %" PRIu64 "ns\n", res);
-            fprintf(stdout, " - Interval      : %" PRIu64 "us\n", settings->pll_startinterval);
+            fprintf(stdout, " - Starttime GPU : %" PRIu64 "us\n", _pllparams.starttime_gpu);
+            fprintf(stdout, " - Interval GPU  : %" PRIu64 "us\n", _pllparams.startinterval_gpu);
             fprintf(stdout, " - Iterations    : %d\n", iter);
+            fprintf(stdout, " - Resolution    : %" PRIu64 "ns\n", res);
         }
             
     } else {
@@ -472,11 +657,15 @@ int FlashCamPLL::start( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params
     if ( settings->verbose )
         fprintf(stdout, "%s: Succes.\n", __func__);
 
+    //open logfile
+    if (_pllparams.uselog)
+        logfile.open ("FlashCam_PLL_log.txt");
+    
     return 0;
 }
 
 int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
-    
+
     //initialisation error?
     if (_error) {
         fprintf(stderr, "%s: FlashCamPLL incorrectly initialised.\n", __func__);
@@ -485,90 +674,69 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
     
     if (!_active) {
         fprintf(stderr, "%s: PLL not running\n", __func__);
-        return 1;
+        return 0;
     }
     
     if (settings->verbose)
         fprintf(stdout, "%s: stopping PLL..\n", __func__);
 
     //stop PWM
-    pwmWrite(PLL_PIN, 0);
+    resetGPIO();
     //reset fps
-    params->framerate = settings->pll_fpsfreq;
+    params->framerate = _pllparams.framerate;
     //reset active-flag
+    settings->pll_enabled = false;
     _active = false;
+    
+    //wait for mmal to gracefully process any pending updates
+    usleep(1000000); //sleep 1s
     
     if ( settings->verbose )
         fprintf(stdout, "%s: Succes.\n", __func__);
 
+    // close logfile
+    if (logfile.is_open())
+        logfile.close();
+    
     return 0;
 }
 
-int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport) {
-    uint64_t interval;
-    return FlashCamPLL::getGPUoffset(videoport, &interval);
-}
-                                  
-int64_t FlashCamPLL::getGPUoffset(MMAL_PORT_T *videoport, uint64_t *interval) {
-    // offset values in us.
-    static  int64_t offset           = 0; //static average..
-    static uint64_t offset_interval  = 0; //interval/accuracy of offset
-    static  int64_t update           = 0;
-    
-    // offset requirements
-    unsigned int max_iter = 5;   //try to compute offset X times
-    uint64_t     max_diff = 150; //offset should be within 150us accuracy.
-    float        rate     = 0.1; //update rate. How much effect has a new value on the average?
-    
-    // var's to compute offset;
-    struct timespec cpu1, cpu2;
-    uint64_t t_gpu    = 0;
-    uint64_t t_cpu1   = 0;
-    uint64_t t_cpu2   = 0;
-    unsigned int iter = 0;
-    
-    //ensure we get an offset the first time we try..
-    if (offset == 0)
-        max_iter = 50;
-    
-    do {
-        // get CPU start-time
-        clock_gettime(CLOCK_MONOTONIC, &cpu1);
-        // get GPU time (us)
-        mmal_port_parameter_get_uint64(videoport, MMAL_PARAMETER_SYSTEM_TIME, &t_gpu);
-        // get CPU finish-time
-        clock_gettime(CLOCK_MONOTONIC, &cpu2);
-        // struct -> us
-        t_cpu1 = ((uint64_t) cpu1.tv_sec) * 1000000 + ((uint64_t) cpu1.tv_nsec) / 1000;
-        t_cpu2 = ((uint64_t) cpu2.tv_sec) * 1000000 + ((uint64_t) cpu2.tv_nsec) / 1000;            
-        //track iterations
-        iter++;
-    } while (((t_cpu2 - t_cpu1) > max_diff ) && (iter <= max_iter)) ;
-    
-    //do we have an offset?
-    if (iter < max_iter) {
-        int64_t d_offset          = t_cpu1 - t_gpu;
-        int64_t d_offset_interval = t_cpu2 - t_cpu1;
-        
-        if (offset == 0) {
-            offset          = d_offset;
-            offset_interval = d_offset_interval;
-        } else {
-            offset          = ((1.0f - rate) * offset          ) + (rate * d_offset);
-            offset_interval = ((1.0f - rate) * offset_interval ) + (rate * d_offset_interval);
-        }
+void FlashCamPLL::clearParams() {
+    for( int i=0; i<FLASHCAM_PLL_JITTER; i++) {
+        _pllparams.error[i] = 0;
+    }
+    for( int i=0; i<FLASHCAM_PLL_SAMPLES; i++) {
+        _pllparams.error_avg[i]          = 0;
+        _pllparams.error_avg_dt[i]       = 0;
+        _pllparams.error_avg_dt_avg[i]   = 0;
+        _pllparams.error_avg_std[i]      = 0;
     }
     
-    update++;
-    //fprintf(stdout, "gpu time : %" PRIu64 "\n", t_gpu);
-    //fprintf(stdout, "cpu time : %" PRIu64 "\n", t_cpu1);
-    //fprintf(stdout, "offset     : %" PRId64 " / %" PRId64 " / %" PRId64  " / %d\n", offset, offset_interval, update, iter);
-    *interval = offset_interval;
-    return offset;
+    _pllparams.framerate                 = 0;
+    _pllparams.pwm_period                = 0;
+    _pllparams.starttime_gpu             = 0;
+    _pllparams.startinterval_gpu         = 0;
+    _pllparams.last_frametime_gpu        = 0;
+    _pllparams.locktime                  = 0;
+    _pllparams.pid_framerate             = 0;
+    _pllparams.last_error                = 0;
+    _pllparams.last_error_us             = 0;
+    _pllparams.integral                  = 0;
+    
+    _pllparams.error_idx_jitter          = 0;
+    _pllparams.error_idx_sample          = 0;
+    _pllparams.error_sum                 = 0;
+    _pllparams.error_avg_last            = 0;
+    _pllparams.error_avg_sum             = 0;
+    _pllparams.error_avg_dt_last         = 0;
+    _pllparams.error_avg_dt_sum          = 0;
+    _pllparams.error_avg_dt_avg_last     = 0;
+    _pllparams.error_avg_dt_avg_sum      = 0;
+    _pllparams.error_avg_std_last        = 0;
+    _pllparams.error_avg_std_sum         = 0;
+    
+    _pllparams.uselog                    = false;
 }
-
-
-
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->pll_enabled               = 0;
@@ -576,12 +744,6 @@ void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->pll_offset                = 0;                            // PWM start == Frame start
     settings->pll_pulsewidth            = 0.5f / VIDEO_FRAME_RATE_NUM;  // 50% duty cycle with default framerate
     settings->pll_fpsreducer_enabled    = 1;                            // Allow PLL to reduce frequency when needed
-
-    //internals
-    settings->pll_starttime     = 0;
-    settings->pll_startinterval = 0;
-    settings->pll_fpsfreq       = 0;
-    settings->pll_period        = 0;
 }
 
 void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
@@ -589,7 +751,87 @@ void FlashCamPLL::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stderr, "PLL Divider   : %d\n", settings->pll_divider);
     fprintf(stderr, "PLL Offset    : %d us\n", settings->pll_offset);
     fprintf(stderr, "PLL Pulsewidth: %0.5f ms\n", settings->pll_pulsewidth);
-    fprintf(stderr, "PLL FPSRedycer: %d\n", settings->pll_fpsreducer_enabled);
+    fprintf(stderr, "PLL FPSReducer: %d\n", settings->pll_fpsreducer_enabled);
 }
 
+/* FLASHCAM FUNCATIONS --> EXTERNAL */
 
+int FlashCam::setPLLEnabled( unsigned int  enabled ) {    
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change PLL-mode while camera is active\n", __func__);
+        return Status::mmal_to_int(MMAL_EINVAL);
+    }
+
+    _settings.pll_enabled = enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::getPLLEnabled( unsigned int *enabled ) {
+    *enabled = _settings.pll_enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::setPLLPulseWidth( float  pulsewidth ){    
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change PLL-pulsewidth while camera is active\n", __func__);
+        return Status::mmal_to_int(MMAL_EINVAL);
+    }
+
+    if (pulsewidth < 0) 
+        pulsewidth = 0;
+    _settings.pll_pulsewidth = pulsewidth;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::getPLLPulseWidth( float *pulsewidth ) {
+    *pulsewidth = _settings.pll_pulsewidth;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::setPLLDivider( unsigned int  divider ){    
+    // Is camera active?
+    if (_active) {
+        fprintf(stderr, "%s: Cannot change PLL-divider while camera is active\n", __func__);
+        return Status::mmal_to_int(MMAL_EINVAL);
+    }
+
+    if (divider < 1) 
+        divider = 1;
+    _settings.pll_divider = divider;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::getPLLDivider( unsigned int *divider ) {
+    *divider = _settings.pll_divider;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::setPLLOffset( int  offset ){    
+    _settings.pll_offset = offset;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::getPLLOffset( int *offset ) {
+    *offset = _settings.pll_offset;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::setPLLFPSReducerEnabled( unsigned int  enabled ) {    
+    _settings.pll_fpsreducer_enabled = enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+int FlashCam::getPLLFPSReducerEnabled( unsigned int *enabled ) {
+    *enabled = _settings.pll_fpsreducer_enabled;
+    return Status::mmal_to_int(MMAL_SUCCESS);
+}
+
+void FlashCam::getPLLParams( FLASHCAM_PLL_PARAMS_T **pllparams) {
+#ifdef PLLTUNE
+    *pllparams = &_pllparams;
+#else
+    memcpy(pllparams, &_pllparams, sizeof(FLASHCAM_PLL_PARAMS_T));
+#endif
+}

@@ -77,7 +77,7 @@ typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
 
 /*
  * FLASHCAM_PARAMS_T
- * Tracker of all camera parameters.
+ * Tracker of all camera parameters. This struct is Read Only.
  */
 typedef struct {
     int rotation;                               // Camera rotation (degrees) : 0 / 90 / 180 / 270;
@@ -95,6 +95,7 @@ typedef struct {
     int brightness;                             // Image Brightness:    0    to    100
     int saturation;                             // Image Saturation: -100    to    100
     unsigned int iso;                           // ISO             :    0    to   1600      (800+ might not work; 0=auto)
+    unsigned int sensormode;                    // Sensor Mode. See: https://www.raspberrypi.org/documentation/raspbian/applications/camera.md
     unsigned int shutterspeed;                  // Shutterspeed    :    0    to 330000      (microseconds; limited by fps in VideoMode)
     float awbgain_red;                          // AWB gain red    :    0.0f to      8.0f   (Only used when AWB=OFF)
     float awbgain_blue;                         // AWB gain blue   :    0.0f to      8.0f   (Only used when AWB=OFF)
@@ -111,7 +112,10 @@ typedef struct {
     int verbose;                                // Verbose or not?
     int update;                                 // Register for updates from the camera when its internal settings are changed?
     FLASHCAM_MODE_T mode;                       // Capture-mode of camera 
-
+    unsigned int sensormode;                    // Sensor Mode. See: https://www.raspberrypi.org/documentation/raspbian/applications/camera.md
+                                                //  - Note that `sensormode` is also defined as `params`. It is located at these locations as it
+                                                //    it is a `param`, but needs to be defined before the camera is initialised.
+    
 #ifdef BUILD_FLASHCAM_WITH_PLL  
     // PLL: Phase Lock Loop ==> Allows the camera (in videomode) to send lightpulse/flash upon frameexposure.
     //                          The Raspberry firmware only support flash when in capture mode, hence this option.
@@ -122,14 +126,7 @@ typedef struct {
     unsigned int pll_fpsreducer_enabled;        // Use FPS-reducer    : On (1) or Off (0)
                                                 // --> Tracks real fps of system and reduces the target fps if they do not match
                                                 //     Disabling the reducer increases processing speed, but if the target fps is too high, no lock can be obtained.
-    
-    //INTERNAL VARIABLES. CANNOT BE SET/READ. USED FOR PLL TRACKING
-    uint64_t pll_starttime;                     // [ starttime of PLL in us ]
-    uint64_t pll_startinterval;                 // [ Interval in which clock is started ]
-    float pll_fpsfreq;                          // [ frequency of PLL corrected towards fps. ]
-    float pll_period;                           // [ period of a single pwm signal in us ]
 #endif
-    
 } FLASHCAM_SETTINGS_T;
 
 

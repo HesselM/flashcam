@@ -4,6 +4,9 @@ project(flashcam)
 
 option(VIDTEST "compile for video testing" OFF)
 option(PLLTEST "compile for PLL testing" OFF)
+option(PLLTUNE "compile for PLL tuning" OFF)
+option(PLLAUTOTUNE "compile for PLL autotuning" OFF)
+option(FRAMECAPTURE "compile to capture, view and store frames by using OpenCV" OFF)
 
 set(CMAKE_CXX_FLAGS "-fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_C_FLAGS   "-fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
@@ -52,18 +55,28 @@ include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 include_directories(${CMAKE_SOURCE_DIR})
 
 # Which test?
-if(PLLTEST)
+if (FRAMECAPTURE)
+    message(">> Building for framecapturing (FRAMECAPTURE=ON)")
+    set(FLASHCAM_SOURCES FlashCam_framecapture.cpp; ${FLASHCAM_SOURCES})
+elseif(PLLAUTOTUNE)
+    message(">> Building for PLL-tuning (PLLAUTOTUNE=ON)")
+    add_definitions( -DPLLTUNE )
+    set(FLASHCAM_SOURCES FlashCam_autotune_PLL.cpp; terminal.cpp; ${FLASHCAM_SOURCES})
+elseif(PLLTUNE)
+    message(">> Building for PLL-tuning (PLLTUNE=ON)")
+    add_definitions( -DPLLTUNE )
+    set(FLASHCAM_SOURCES FlashCam_tunepll.cpp; terminal.cpp; ${FLASHCAM_SOURCES})
+elseif(PLLTEST)
     message(">> Building for PLL-testing (PLLTEST=ON)")
     set(FLASHCAM_SOURCES FlashCam_test_PLL.cpp; ${FLASHCAM_SOURCES})
+elseif(VIDTEST)
+    message(">> Building for video-testing (VIDTEST=ON)")
+    set(FLASHCAM_SOURCES FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
 else()
-    if(VIDTEST)
-        message(">> Building for video-testing (VIDTEST=ON)")
-        set(FLASHCAM_SOURCES FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
-    else()
-        message(">> Building for capture-testing (VIDTEST=OFF)")
-        set(FLASHCAM_SOURCES FlashCam_test.cpp; ${FLASHCAM_SOURCES})
-    endif()
+    message(">> Building for capture-testing (VIDTEST=OFF)")
+    set(FLASHCAM_SOURCES FlashCam_test.cpp; ${FLASHCAM_SOURCES})
 endif()
+        
 
 # Executables
 add_executable(flashcam ${FLASHCAM_SOURCES})
@@ -79,6 +92,15 @@ if (WIRINGPI_FOUND)
     target_link_libraries(flashcam ${WIRINGPI_LIBRARIES})
 endif()
 
-message(">> Used CXX flags: \n ${CMAKE_CXX_FLAGS}")
-message(">> Used C flags: \n${CMAKE_C_FLAGS}")
+# Print output.
+set( PRETTY_CMAKE_CXX_FLAGS "\t${CMAKE_CXX_FLAGS}")
+string(REPLACE " -" "\n\t-" PRETTY_CMAKE_CXX_FLAGS ${PRETTY_CMAKE_CXX_FLAGS})
+set( PRETTY_CMAKE_C_FLAGS "\t${CMAKE_C_FLAGS}")
+string(REPLACE " -" "\n\t-" PRETTY_CMAKE_C_FLAGS ${PRETTY_CMAKE_C_FLAGS})
+
+message(">> Used CXX flags: \n ${PRETTY_CMAKE_CXX_FLAGS}")
+message(">> Used C flags: \n${PRETTY_CMAKE_C_FLAGS}")
 message(">> Source List: \n${FLASHCAM_SOURCES}")
+
+
+# list(REMOVE_DUPLICATES <list>
