@@ -82,6 +82,18 @@
 #define LOOPTEST_ITER 50
 #define LOOPTEST_TIME 10.0f
 
+// comment if loop-testing should only do 1 P-value. If multiple values need to be checked, uncomment LOOPTEST_P.
+// -> it runs for each value of `P` from the displayed value, with P_STEPS to P_MAX the LOOPTEST program. 
+//     generating a logfile for LOOPTEST_ITER iterations of a duration of LOOPTEST_TIME seconds
+#define LOOPTEST_P
+
+//P-value test params
+#ifdef LOOPTEST_P
+#define LOOPTEST_P_MAX 15.0f
+#define LOOPTEST_P_STEP 1.0f
+#endif
+
+
 //TIMER PARAMS
 static double prev_tick;
 static double time_sum;
@@ -129,16 +141,17 @@ void printScreen() {
     printf( TPOS(19,1) "  - std(jitter)       : %11.5f us (%d)      " TCL, pllparams->error_avg_std_sum     / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
     printf( TPOS(20,1) "  - Integral          : %11.5f us           " TCL, pllparams->integral);
     printf( TPOS(21,1) " Frequency                                  " TCL);
-    printf( TPOS(22,1) "  - Target            : %11.5f Hz           " TCL, pllparams->framerate);
-    printf( TPOS(23,1) "  - PID proposed      : %11.5f Hz           " TCL, pllparams->pid_framerate);
-    printf( TPOS(24,1) "  - CPU Measured      : %11.5f Hz           " TCL, frames/time_sum);
-    printf( TPOS(25,1) " PWM interval         : %11" PRId64 " us    " TCL, pllparams->startinterval_gpu);
-    printf( TPOS(26,1) " Sensor Mode          : %11d                " TCL, SENSORMODE);
-    printf( TPOS(27,1) " Width x Height       : %4d x %4d Pixels    " TCL, settings.width, settings.height);
-    printf( TPOS(28,1) " Looptest                                   " TCL);
-    printf( TPOS(29,1) "  - Iteration         : %11d                " TCL, looptest_iteration);
-    printf( TPOS(30,1) "  - Elapsed           : %11.5f s            " TCL, time_sum);
-    printf( TPOS(31,1) "  - Logfile           : %s                  " TCL, looptest_logname.c_str());
+    printf( TPOS(22,1) "  - PWM               : %11.5f Hz           " TCL, 1000000.0f / pllparams->pwm_period );
+    printf( TPOS(23,1) "  - Camera Target     : %11.5f Hz           " TCL, pllparams->framerate);
+    printf( TPOS(24,1) "  - PID proposed      : %11.5f Hz           " TCL, pllparams->pid_framerate);
+    printf( TPOS(25,1) "  - CPU Measured      : %11.5f Hz           " TCL, frames/time_sum);
+    printf( TPOS(26,1) " PWM interval         : %11" PRId64 " us    " TCL, pllparams->startinterval_gpu);
+    printf( TPOS(27,1) " Sensor Mode          : %11d                " TCL, SENSORMODE);
+    printf( TPOS(28,1) " Width x Height       : %4d x %4d Pixels    " TCL, settings.width, settings.height);
+    printf( TPOS(29,1) " Looptest                                   " TCL);
+    printf( TPOS(30,1) "  - Iteration         : %11d                " TCL, looptest_iteration);
+    printf( TPOS(31,1) "  - Elapsed           : %11.5f s            " TCL, time_sum);
+    printf( TPOS(32,1) "  - Logfile           : %s                  " TCL, looptest_logname.c_str());
 }
 
 void logData(bool header) {
@@ -371,8 +384,30 @@ int main(int argc, const char **argv) {
                 active_looptest = true;
                 FlashCam::get().startCapture();                   
             }  else {
+                //close logdile
+                if (looptest_logfile.is_open())
+                    looptest_logfile.close();
+                //reset flags
                 active          = false;
-                active_looptest = false;
+                active_looptest = false;                
+
+#ifdef LOOPTEST_P
+                // Do we start new iteration with new P-value?
+                pllparams->P += LOOPTEST_P_STEP;
+                if (pllparams->P < LOOPTEST_P_MAX) {
+                    //new logfile name
+                    looptest_logname = "P" + std::to_string(pllparams->P) + "_I" + std::to_string(pllparams->I) + "_D" + std::to_string(pllparams->D) + ".csv"; 
+                    //new logfile + print header
+                    looptest_logfile.open(looptest_logname);
+                    logData(true);
+                    //start new iteration
+                    looptest_iteration  = 0;
+                    active              = true;
+                    active_looptest     = true;
+                    initScreen();
+                    FlashCam::get().startCapture();                    
+                }
+#endif
             }
             printScreen();
         }

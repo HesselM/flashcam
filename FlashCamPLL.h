@@ -42,12 +42,12 @@
 
 
 //Number of samples for the array's for error estimations
-#define FLASHCAM_PLL_JITTER 10
-#define FLASHCAM_PLL_SAMPLES 20
+#define FLASHCAM_PLL_JITTER 5
+#define FLASHCAM_PLL_SAMPLES 10
 
 //Locking requirements
-#define FLASHCAM_PLL_LOCK_AVG 0.05f
-#define FLASHCAM_PLL_LOCK_STD 0.02f
+//#define FLASHCAM_PLL_LOCK_AVG 0.05f
+//#define FLASHCAM_PLL_LOCK_STD 0.02f
 
 /*
  * FLASHCAM_PLL_PARAMS_T
