@@ -35,6 +35,16 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
+
+//
+// Tool for tuning PLL
+// - Manual tuning 
+// - Auto-test PID-paramaters for `LOOPTEST_ITER` iterations, where each iteration lasts `LOOPTEST_TIME` seconds
+//      => results are written to csv file to analyse stability
+// - Auto-test different P-values. Only works when `#define LOOPTES_P` is uncommented.
+//      => per P-value a different log is created
+//
+
 #include "FlashCam.h"
 #include "terminal.h"
 
@@ -49,6 +59,12 @@
 #include <sstream>
 #include <iomanip>
 #include <string>
+
+
+// comment if loop-testing should only do 1 P-value. If multiple values need to be checked, uncomment LOOPTEST_P.
+// -> it runs for each value of `P` from the displayed value, with P_STEPS to P_MAX the LOOPTEST program. 
+//     generating a logfile for LOOPTEST_ITER iterations of a duration of LOOPTEST_TIME seconds
+#define LOOPTEST_P
 
 // 0-7
 #define SENSORMODE   5
@@ -83,11 +99,6 @@
 //Looptest defination
 #define LOOPTEST_ITER 50
 #define LOOPTEST_TIME 5.0f
-
-// comment if loop-testing should only do 1 P-value. If multiple values need to be checked, uncomment LOOPTEST_P.
-// -> it runs for each value of `P` from the displayed value, with P_STEPS to P_MAX the LOOPTEST program. 
-//     generating a logfile for LOOPTEST_ITER iterations of a duration of LOOPTEST_TIME seconds
-#define LOOPTEST_P
 
 //P-value test params
 #ifdef LOOPTEST_P

@@ -35,6 +35,13 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
+
+//
+// Capture frame from sensor in VideoMode
+// Frames are displayed via OpenCV
+// Write frames to file for e.g. calibration.
+//
+
 #include "FlashCam.h"
 
 #include <stdlib.h>
@@ -52,17 +59,10 @@
 #define FRAME_HEIGHT 922
 // microseconds
 #define SHUTTERSPEED 15000
-// 1/0
-#define USEPLL      1
 
 //used keys
 #define CHAR_ESC 27
 #define CHAR_P   112
-
-
-
-
-
 
 static cv::Mat Y;
 unsigned int captured;
@@ -109,28 +109,13 @@ int main(int argc, const char **argv) {
     //set camera params
     FlashCam::get().setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
     FlashCam::get().setShutterSpeed(SHUTTERSPEED);
-    //camera.setFlashMode(MMAL_PARAM_FLASH_ON);
-    //camera.setDenoise(0);
-    //camera.setISO(800);
     FlashCam::get().setRotation(0);
-    FlashCam::get().setFrameRate(1);
+    FlashCam::get().setFrameRate(1);        //1 Hz
     
     //PLL parameters
-    FlashCam::get().setPLLDivider(1); //every frame
-    
-    //as we are using rolling shutter, the pulsewidth is based on the number of lines
-    // and the time it takes to read a line. For the IMX219 these readline-values are:
-    // mode   0: unknonw (autoselect)
-    // mode 1-5: 18904 ns
-    // mode 6-7: 19517 ns
-    // 
-    // Shutterspeed parameter is in us, and pulsewidth should be in ms.
-    // Hence: 
-    //  ms         = ((      ns          )        us            )  ms
-    //  pulsewidth = ((FRAME_HEIGHT*18904) / 1000 + SHUTTERSPEED) / 1000
-    //FlashCam::get().setPLLPulseWidth(((FRAME_HEIGHT*18904)/1000 + SHUTTERSPEED)/1000);
-    FlashCam::get().setPLLPulseWidth(1000); //100% dutycycle    
-    FlashCam::get().setPLLOffset(0); //no offset
+    FlashCam::get().setPLLDivider(1);       //every frame
+    FlashCam::get().setPLLPulseWidth(1000); //1000ms = 100% dutycycle @ 1Hz
+    FlashCam::get().setPLLOffset(0);        //no offset
 
     //get & print params
     FlashCam::get().getParams( &params , true);   
@@ -144,7 +129,6 @@ int main(int argc, const char **argv) {
     Y.create( settings.height, settings.width, CV_8UC1 );
     cv::namedWindow( "Y", cv::WINDOW_NORMAL );
     
- 
     //intit
     char key = 0;
     captured = 0; //0=capturing, 1=captured, 2=copied data to memory
@@ -157,16 +141,13 @@ int main(int argc, const char **argv) {
     //continue while capturing isn't the ESC-key
     while (key != CHAR_ESC) {
         //start stream image
-        FlashCam::get().setPLLEnabled(USEPLL);
+        FlashCam::get().setPLLEnabled(1);
         FlashCam::get().startCapture();   
         
         //wait until captured
         while (captured != 2)
             usleep(100000); //sleep 100ms
 
-        //wait for process to finish
-        //usleep(1000000); //sleep 1000ms
-        
         //stop capturing
         FlashCam::get().stopCapture();   
         
@@ -175,7 +156,6 @@ int main(int argc, const char **argv) {
         key = (char) cv::waitKey(0);   
         fprintf(stdout, "Key pressed: %c\n", key);
 
-        
         //write to file?
         if (key == CHAR_P) {
             sprintf(filename, "frame-%d.jpg", frameid);
