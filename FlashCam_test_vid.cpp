@@ -45,6 +45,23 @@
 #include <time.h>
 #include <unistd.h>
 
+// 0-7
+#define SENSORMODE   5
+// Pixels
+#define FRAME_WIDTH  1640
+#define FRAME_HEIGHT 922
+// microseconds
+#define SHUTTERSPEED 15000
+// hz - framerate of camera
+#define FRAMERATE 30
+
+// Do we use a external -synchronised- flash?
+#define PLL_ENABLE  1
+// FRAMERATE / PLL_DIVIDER = framerate of PWM
+#define PLL_DIVIDER 2
+// microseconds. Trailing time of PWM on captured frame
+#define PLL_OFFSET  0
+
 static cv::Mat Y;
 static cv::Mat U;
 static cv::Mat V;
@@ -70,7 +87,7 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
     frames++;
     prev = tick;
     
-    if ((frames % 120) == 0)
+    if ((frames % FRAMERATE) == 0)
         fprintf(stdout, "Timing: %f (avg: %f; frames: %d; fps:%f)\n", elapsed, sum/frames, frames, 1.0/(sum/frames));
 }
 
@@ -86,26 +103,39 @@ int main(int argc, const char **argv) {
     FlashCam::getDefaultParams( &params );
     
     //update params
-    settings.width=640;
-    settings.height=480;
-    settings.verbose=0;
+    settings.width=FRAME_WIDTH;
+    settings.height=FRAME_HEIGHT;
+    settings.verbose=1;
     settings.update=0;
     settings.mode=FLASHCAM_MODE_VIDEO;
+    settings.sensormode=SENSORMODE;
         
-    //create camera with params
+    //create camera with settings
     FlashCam::get().setSettings( &settings );
-    
     //set callback
     FlashCam::get().setFrameCallback( &flashcam_callback );
 
     //set camera params
     FlashCam::get().setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
-    //camera.setShutterSpeed(350);
-    //camera.setFlashMode(MMAL_PARAM_FLASH_ON);
-    //camera.setDenoise(0);
-    //camera.setISO(800);
-    FlashCam::get().setRotation(270);
-    FlashCam::get().setFrameRate(120);
+    FlashCam::get().setShutterSpeed(SHUTTERSPEED);
+    FlashCam::get().setRotation(0);
+    FlashCam::get().setFrameRate(FRAMERATE);
+    
+    //PLL parameters
+    FlashCam::get().setPLLEnabled(PLL_ENABLE);
+    FlashCam::get().setPLLDivider(PLL_DIVIDER);
+    //as we are using rolling shutter, the pulsewidth is based on the number of lines
+    // and the time it takes to read a line. For the IMX219 these readline-values are:
+    // mode   0: unknonw (autoselect)
+    // mode 1-5: 18904 ns
+    // mode 6-7: 19517 ns
+    // 
+    // Shutterspeed parameter is in us, and pulsewidth should be in ms.
+    // Hence: 
+    //  ms         = ((      ns          )        us            )  ms
+    //  pulsewidth = ((FRAME_HEIGHT*18904) / 1000 + SHUTTERSPEED) / 1000
+    FlashCam::get().setPLLPulseWidth(((FRAME_HEIGHT*18904)/1000 + SHUTTERSPEED)/1000);
+    FlashCam::get().setPLLOffset(PLL_OFFSET);
     
     //get & print params
     FlashCam::get().getParams( &params , true);   
@@ -119,9 +149,9 @@ int main(int argc, const char **argv) {
     Y.create( settings.height, settings.width, CV_8UC1 );
     cv::namedWindow( "Y", cv::WINDOW_AUTOSIZE );
     U.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
-    //cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
+    cv::namedWindow( "U", cv::WINDOW_AUTOSIZE );
     V.create( settings.height >> 1, settings.width >> 1, CV_8UC1 );
-    //cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
+    cv::namedWindow( "V", cv::WINDOW_AUTOSIZE );
 
     //init timings
     prev   = cv::getTickCount();
