@@ -211,8 +211,9 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         uint64_t last_pulsetime_gpu = _pllparams.starttime_gpu + (uint64_t)(k * frame_period);
         
         // (Percentual) error with respect to the (corrected) PWM-period.
+        // error is with respect to the centre of the estimated interval of the GPU-startime of the hardware PWM
         // NOTE: frametime_gpu > last_pulsetime_gpu.
-        int64_t error_us = frametime_gpu - last_pulsetime_gpu + settings->pll_offset;
+        int64_t error_us = (frametime_gpu - last_pulsetime_gpu) + settings->pll_offset + 0.5*_pllparams.startinterval_gpu;
         float error      = error_us / frame_period;
         
         // if error > 50%

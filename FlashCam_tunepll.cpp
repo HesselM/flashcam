@@ -46,6 +46,8 @@
 #include <stdlib.h>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <iomanip>
 #include <string>
 
 // 0-7
@@ -80,7 +82,7 @@
 
 //Looptest defination
 #define LOOPTEST_ITER 50
-#define LOOPTEST_TIME 10.0f
+#define LOOPTEST_TIME 5.0f
 
 // comment if loop-testing should only do 1 P-value. If multiple values need to be checked, uncomment LOOPTEST_P.
 // -> it runs for each value of `P` from the displayed value, with P_STEPS to P_MAX the LOOPTEST program. 
@@ -89,7 +91,7 @@
 
 //P-value test params
 #ifdef LOOPTEST_P
-#define LOOPTEST_P_MAX 15.0f
+#define LOOPTEST_P_MAX 10.0f
 #define LOOPTEST_P_STEP 1.0f
 #endif
 
@@ -104,10 +106,11 @@ static FLASHCAM_PLL_PARAMS_T *pllparams; //pointer to PLL internal parameters
 static FLASHCAM_SETTINGS_T     settings; //copy of settings structure
 
 //Looptest params
-static unsigned int     looptest_iteration;
-static std::string      looptest_logname;
-static std::ofstream    looptest_logfile;
-static bool             looptest_loopdone;
+static unsigned int      looptest_iteration;
+static std::stringstream looptest_logname_stream;
+static std::string       looptest_logname;
+static std::ofstream     looptest_logfile;
+static bool              looptest_loopdone;
 
 //state
 static bool active;             //flashcam active?
@@ -121,7 +124,11 @@ void initScreen() {
     printf( TPOS( 2,1) "-------------------------------" TCL);
     printf( TPOS( 3,1) " q = Stop tuning / quit program" TCL);
     printf( TPOS( 4,1) " r = Restart PLL/camera        " TCL);
+#ifdef LOOPTEST_P
+    printf( TPOS( 5,1) " t = Looptest (%4d x %4.1fs) - P_LOOP: step:%5.3f/max:%5.3f " TCL, LOOPTEST_ITER, LOOPTEST_TIME, LOOPTEST_P_STEP, LOOPTEST_P_MAX);
+#else 
     printf( TPOS( 5,1) " t = Looptest (%4d x %4.1fs)   " TCL, LOOPTEST_ITER, LOOPTEST_TIME);
+#endif    
     printf( TPOS( 6,1) "-------------------------------" TCL);
 }
 
@@ -208,12 +215,19 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
         if (time_sum > LOOPTEST_TIME )
             looptest_loopdone = true;
     } 
-    
     printScreen();
 }
 
 
-
+void updateLogName() {
+    looptest_logname_stream.str("");
+    looptest_logname_stream.clear();
+    looptest_logname_stream << "P" << std::fixed << std::setprecision(2) << pllparams->P;
+    looptest_logname_stream << "I" << std::fixed << std::setprecision(2) << pllparams->I;
+    looptest_logname_stream << "D" << std::fixed << std::setprecision(2) << pllparams->D;
+    looptest_logname_stream << ".csv";
+    looptest_logname = looptest_logname_stream.str();
+}
 
 
 void initFlashCam() {
@@ -348,8 +362,8 @@ int main(int argc, const char **argv) {
                     resetFlashCam();
                 
                     //update logname
-                    looptest_logname = "P" + std::to_string(pllparams->P) + "_I" + std::to_string(pllparams->I) + "_D" + std::to_string(pllparams->D) + ".csv"; 
-
+                    updateLogName();
+                
                     //close log    
                     if (looptest_logfile.is_open())
                         looptest_logfile.close();
@@ -394,9 +408,9 @@ int main(int argc, const char **argv) {
 #ifdef LOOPTEST_P
                 // Do we start new iteration with new P-value?
                 pllparams->P += LOOPTEST_P_STEP;
-                if (pllparams->P < LOOPTEST_P_MAX) {
+                if (pllparams->P <= LOOPTEST_P_MAX) {
                     //new logfile name
-                    looptest_logname = "P" + std::to_string(pllparams->P) + "_I" + std::to_string(pllparams->I) + "_D" + std::to_string(pllparams->D) + ".csv"; 
+                    updateLogName();
                     //new logfile + print header
                     looptest_logfile.open(looptest_logname);
                     logData(true);
