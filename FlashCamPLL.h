@@ -45,9 +45,8 @@
 #define FLASHCAM_PLL_JITTER 5
 #define FLASHCAM_PLL_SAMPLES 10
 
-//Locking requirements
-//#define FLASHCAM_PLL_LOCK_AVG 0.05f
-//#define FLASHCAM_PLL_LOCK_STD 0.02f
+//Stepresone..
+#define FLASHCAM_PLL_STEPRESPONSE_STEPS     2
 
 /*
  * FLASHCAM_PLL_PARAMS_T
@@ -76,6 +75,13 @@ typedef struct {
     float D;
 #endif
     
+#ifdef STEPRESPONSE
+    unsigned int frames;                    // internal counter
+    unsigned int frames_next;               // number of frames after which the framerate is changed
+    unsigned int step_idx;                  // internal index of selecte framerate
+    float        steps[FLASHCAM_PLL_STEPRESPONSE_STEPS]; //array of framerates.
+#endif
+        
     //error. All is in microseconds
     unsigned int error_idx_jitter;                  // jitter index for circular buffers
     unsigned int error_idx_sample;                  // Sample index for circular buffers
@@ -97,8 +103,6 @@ typedef struct {
     float error_avg_std_sum;                        // sum of contents of `error_avg_std[]`
     float error_avg_std[FLASHCAM_PLL_SAMPLES];      // Circular buffer. Holds the standard deviation of `error_avg[]`
                                                     //      Used to determine stability. When (close to) zero, error-variation is constant.  
-    //Misc
-    bool uselog;                                    // Flag to indicate if logfile is used.
 } FLASHCAM_PLL_PARAMS_T;
 
 

@@ -45,6 +45,14 @@
 //      => per P-value a different log is created
 //
 
+// comment if loop-testing should only do 1 P-value. If multiple values need to be checked, uncomment LOOPTEST_P.
+// -> it runs for each value of `P` from the displayed value, with P_STEPS to P_MAX the LOOPTEST program. 
+//     generating a logfile for LOOPTEST_ITER iterations of a duration of LOOPTEST_TIME seconds
+#define LOOPTEST_P
+
+// USE `-DSTEPRESPONSE` WITH CMAKE TO TEST STEPRESPONSE
+
+
 #include "FlashCam.h"
 #include "terminal.h"
 
@@ -61,10 +69,6 @@
 #include <string>
 
 
-// comment if loop-testing should only do 1 P-value. If multiple values need to be checked, uncomment LOOPTEST_P.
-// -> it runs for each value of `P` from the displayed value, with P_STEPS to P_MAX the LOOPTEST program. 
-//     generating a logfile for LOOPTEST_ITER iterations of a duration of LOOPTEST_TIME seconds
-#define LOOPTEST_P
 
 // 0-7
 #define SENSORMODE   5
@@ -135,15 +139,32 @@ void initScreen() {
     printf( TPOS( 2,1) "-------------------------------" TCL);
     printf( TPOS( 3,1) " q = Stop tuning / quit program" TCL);
     printf( TPOS( 4,1) " r = Restart PLL/camera        " TCL);
+#ifdef STEPRESPONSE
+    printf( TPOS( 5,1) " --> STEPRESPONSE <--" TCL);    
+#else
 #ifdef LOOPTEST_P
     printf( TPOS( 5,1) " t = Looptest (%4d x %4.1fs) - P_LOOP: step:%5.3f/max:%5.3f " TCL, LOOPTEST_ITER, LOOPTEST_TIME, LOOPTEST_P_STEP, LOOPTEST_P_MAX);
 #else 
     printf( TPOS( 5,1) " t = Looptest (%4d x %4.1fs)   " TCL, LOOPTEST_ITER, LOOPTEST_TIME);
 #endif    
+#endif
     printf( TPOS( 6,1) "-------------------------------" TCL);
 }
 
 void printScreen() {     
+#ifdef STEPRESPONSE
+    printf( TPOS( 7,1) " Frequency                                  " TCL);
+    printf( TPOS( 8,1) "  - PWM               : %11.5f Hz           " TCL, 1000000.0f / pllparams->pwm_period );
+    printf( TPOS( 9,1) "  - Camera Target     : %11.5f Hz           " TCL, pllparams->steps[pllparams->step_idx]);
+    printf( TPOS(10,1) "  - CPU Measured      : %11.5f Hz           " TCL, frames/time_sum);
+    printf( TPOS(11,1) " Frame-next           : %11d                " TCL, pllparams->frames_next);
+    printf( TPOS(12,1) " Frame-idx            : %11d                " TCL, pllparams->frames);
+    printf( TPOS(13,1) " PWM interval         : %11" PRId64 " us    " TCL, pllparams->startinterval_gpu);
+    printf( TPOS(14,1) " Sensor Mode          : %11d                " TCL, SENSORMODE);
+    printf( TPOS(15,1) " Width x Height       : %4d x %4d Pixels    " TCL, settings.width, settings.height);
+    printf( TPOS(16,1) " Logfile              : %s                  " TCL, looptest_logname.c_str());
+    printf( TPOS(17,1) " Elapsed time         : %11.5f s            " TCL, time_sum);
+#else
     printf( TPOS( 7,1) " i = P+      j = P-\n          " TCL);
     printf( TPOS( 8,1) " o = I+      k = I-\n          " TCL);
     printf( TPOS( 9,1) " p = D+      l = D-\n          " TCL);
@@ -170,9 +191,29 @@ void printScreen() {
     printf( TPOS(30,1) "  - Iteration         : %11d                " TCL, looptest_iteration);
     printf( TPOS(31,1) "  - Elapsed           : %11.5f s            " TCL, time_sum);
     printf( TPOS(32,1) "  - Logfile           : %s                  " TCL, looptest_logname.c_str());
+#endif
 }
 
 void logData(bool header) {
+#ifdef STEPRESPONSE
+    if (header) {
+        looptest_logfile << "frame";
+        looptest_logfile << ",time";
+        looptest_logfile << ",pts";
+        looptest_logfile << ",pwm_interval";
+        looptest_logfile << ",stp_framerate";
+        looptest_logfile << ",cpu_framerate";
+        looptest_logfile << "\n";
+    } else {   
+        looptest_logfile << "" << frames;
+        looptest_logfile << "," << time_sum;
+        looptest_logfile << "," << pllparams->last_frametime_gpu;
+        looptest_logfile << "," << pllparams->startinterval_gpu;
+        looptest_logfile << "," << pllparams->steps[pllparams->step_idx];
+        looptest_logfile << "," << (frames/time_sum);
+        looptest_logfile << "\n";
+    }        
+#else
     if (header) {
         looptest_logfile << "iteration";
         looptest_logfile << ",frame";
@@ -187,8 +228,8 @@ void logData(bool header) {
         looptest_logfile << ",err_dt_jitter";
         looptest_logfile << ",err_avg_dt_jitter";
         looptest_logfile << ",err_std_jitter";
-        looptest_logfile << "\n";
-    } else {    
+        looptest_logfile << "\n";       
+    } else {   
         looptest_logfile << ""  << looptest_iteration;
         looptest_logfile << "," << frames;
         looptest_logfile << "," << time_sum;
@@ -204,10 +245,13 @@ void logData(bool header) {
         looptest_logfile << "," << (pllparams->error_avg_std_sum    / FLASHCAM_PLL_SAMPLES);
         looptest_logfile << " \n";
     }
+#endif
 }
 
 //CALLBACK SETTINGS
 void flashcam_callback(unsigned char *frame, int w, int h) {
+    
+    
     //Measure update frequency
     double tick    = cv::getTickCount();
     if (prev_tick != 0) {
@@ -217,6 +261,11 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
     }
     prev_tick = tick;   
     
+#ifdef STEPRESPONSE
+    if (active) {
+        logData(false);
+    }
+#else
     //Are we running multiple tests?
     if (active_looptest && !looptest_loopdone) {
         //write data to file
@@ -226,11 +275,15 @@ void flashcam_callback(unsigned char *frame, int w, int h) {
         if (time_sum > LOOPTEST_TIME )
             looptest_loopdone = true;
     } 
+#endif
     printScreen();
 }
 
 
 void updateLogName() {
+#ifdef STEPRESPONSE    
+    looptest_logname = "stepresponse.csv";
+#else
     looptest_logname_stream.str("");
     looptest_logname_stream.clear();
     looptest_logname_stream << "P" << std::fixed << std::setprecision(2) << pllparams->P;
@@ -238,6 +291,7 @@ void updateLogName() {
     looptest_logname_stream << "D" << std::fixed << std::setprecision(2) << pllparams->D;
     looptest_logname_stream << ".csv";
     looptest_logname = looptest_logname_stream.str();
+#endif
 }
 
 
@@ -296,6 +350,7 @@ void resetFlashCam() {
         //reset singleton
         FlashCam::get().clear(); 
         initFlashCam();
+
         //reset PID
         pllparams->P = P;
         pllparams->I = I;
@@ -307,11 +362,22 @@ void resetFlashCam() {
     frames      = 0;
     prev_tick   = 0;
     active      = false;
+    
+#ifdef STEPRESPONSE
+    //reset intervals
+    pllparams->step_idx    = 0;
+    pllparams->frames      = 0;
+    //set parameters
+    pllparams->frames_next = FRAMERATE;
+    pllparams->steps[0]    = FRAMERATE;
+    pllparams->steps[1]    = FRAMERATE+2;
+#endif
 }
 
 
 int main(int argc, const char **argv) {
     initFlashCam(); 
+    resetFlashCam();
 
     // setup screen
     terminal_clear();
@@ -332,10 +398,25 @@ int main(int argc, const char **argv) {
 
     //Loop while no exit-request is send
     while (c != CHAR_Q) {
-        
         //check keyboard updates
-        if (read(STDIN_FILENO, &c, sizeof(c)) == sizeof(c)) {            
+        if (read(STDIN_FILENO, &c, sizeof(c)) == sizeof(c)) {    
             switch (c) {
+                case CHAR_R: //restart
+                if (!active_looptest) {
+#ifdef STEPRESPONSE
+                    if (looptest_logfile.is_open())
+                        looptest_logfile.close();
+                    updateLogName();
+                    looptest_logfile.open(looptest_logname);
+                    logData(true);
+#endif
+                    resetFlashCam();
+                    //start capture
+                    active = true;
+                    FlashCam::get().startCapture();   
+                }
+                break;
+#ifndef STEPRESPONSE
                 case CHAR_I: //i
                     if (!active_looptest)
                         pllparams->P += 0.1;
@@ -360,15 +441,6 @@ int main(int argc, const char **argv) {
                     if (!active_looptest)
                         pllparams->D -= 0.1;
                     break;
-                case CHAR_R: //restart
-                    if (!active_looptest) {
-                        resetFlashCam();
-                        //start capture
-                        active = true;
-                        FlashCam::get().startCapture();   
-                    }
-                    break;
-                
                 case CHAR_T: //start test
                     resetFlashCam();
                 
@@ -389,8 +461,8 @@ int main(int argc, const char **argv) {
                     FlashCam::get().startCapture();   
 
                     break;
+#endif
             }
-            
             
             if (!active) 
                 printScreen();
@@ -441,9 +513,11 @@ int main(int argc, const char **argv) {
         usleep(100000); 
     }
 
-    if (active)
+    if (active) {
+        active = false
         FlashCam::get().stopCapture();   
-
+    }
+    
     if (looptest_logfile.is_open())
         looptest_logfile.close();
 

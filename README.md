@@ -86,3 +86,22 @@ Camera-Mode  : 1
 Timing: 0.008139 (avg: 0.008297; frames: 5880; fps:120.522726)
 Timing: 0.007685 (avg: 0.008297; frames: 6000; fps:120.524067)
 ```
+
+
+tuning:
+```
+XCS~$ cmake     -D CMAKE_TOOLCHAIN_FILE=/home/pi/rpicross_notes/rpi-generic-toolchain.cmake -DPLLTUNE=ON ~/code/flashcam/
+XCS~$ make
+XCS~$ scp flashcam rpizero-local:~/
+RPi~$ su -pc ./flashcam
+
+```
+Stepresponse:
+```
+XCS~$ cmake     -D CMAKE_TOOLCHAIN_FILE=/home/pi/rpicross_notes/rpi-generic-toolchain.cmake -DPLLTUNE=ON -DSTEPRESPONSE=ON  ~/code/flashcam/
+XCS~$ make
+XCS~$ scp flashcam rpizero-local:~/
+RPi~$ su -pc ./flashcam
+```
+
+

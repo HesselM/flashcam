@@ -80,39 +80,6 @@ static unsigned int  fpsreducer_sum;
 static unsigned char fpsreducer_arr[FPSREDUCER_MEASUREMENTS];
 static uint64_t      fpsreducer_prev;
 
-//trackers for PID control
-//static float         error_prev;
-//static uint64_t      frametime_gpu_prev;
-
-//#define PID_SAMPLES  40
-//static unsigned int error_idx;
-// holds error per frame-updates
-//static float        error_arr[PID_SAMPLES];
-// holds average error over last `PID_SAMPLES` frame updates
-//static float        error_avg_arr[PID_SAMPLES];
-// holds standard deviation of error over last `PID_SAMPLES` frame updates
-//static float        error_std_arr[PID_SAMPLES];
-
-// Locking values: 
-//   if the average values of the respectively `error_avg` and the derivative of
-//   `error_std` are within the set bound, the system has locked the camera to PWM
-//#define PID_LOCK_ERRORAVG  0.05f
-//#define PID_LOCK_ERRORDSTD 0.02f
-//static uint64_t     t_locked;
-
-//step response testing?
-//#define STEPRESPONSE
-#ifdef STEPRESPONSE
-static unsigned int stephold    = 0;
-static unsigned int stepholdmax = 30; //number of frames at which a step is not changed
-static unsigned int stepidx     = 0;
-static unsigned int steps       = 4;  //number of steps in array
-static float        steps_arr[] = {140.0f, 158.0f, 140.0f, 139.5f}; //steps
-#endif
-
-//logfile
-std::ofstream logfile; 
-
 //private & static parameterlist
 static FLASHCAM_PLL_PARAMS_T _pllparams;
 
@@ -151,7 +118,6 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
     
     if (settings->pll_enabled) {
         
-#ifndef STEPRESPONSE
 // TIMING UPDATES
         // get frametimings in GPU domain.
         uint64_t frametime_gpu  = pts;
@@ -162,10 +128,11 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
             dt_frametime_gpu = frametime_gpu - _pllparams.last_frametime_gpu;
         //update last measurements
         _pllparams.last_frametime_gpu = frametime_gpu;
-                
+
+#ifndef STEPRESPONSE                
         //correct pll-period toward frames with pll-divider
         float frame_period = _pllparams.pwm_period / settings->pll_divider;
-        
+    
 // FPS VERIFICATIOM
         /*
         // Validate that update rate is close to set frequency. If not, frequency is too high, hence no lock can be obtained.
@@ -224,54 +191,16 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
             error_us = error * frame_period;
         }
     
-// LOCK VERIFICATION
-        
-        // When the system has locked the Camera and PWM signal and the current
-        //  error is smaller then the minimum system error, no update to the GPU
-        //  is send. This ensures that we do not flood the GPU with updates if
-        //  those are not needed.
-        // The minimal system error is determined by the starttime-interval and
-        //  the interval in which the cpu-gpu timeframe conversion is done.
-
-        //locked?
-        /*
-        if (settings->pll_locked > 0) {
-            uint64_t err_abs = abs(error_us);
-            if (err_abs < settings->pll_startinterval_gpu) {
-                //error is within bounds, so return
-#ifdef PLLTUNE
-                settings->pll_tuning_update = 0;
-#endif
-                return Status::mmal_to_int(MMAL_SUCCESS);
-            } else {
-                // We lost our lock! reset.
-                error_idx                    = 0;
-                error_prev                   = 0;
-                settings->pll_error_sum      = 0;
-                settings->pll_error_avg_sum  = 0;
-                settings->pll_error_std_sum  = 0;
-                settings->pll_error_integral = 0;
-                settings->pll_locked         = 0;
-                settings->pll_locked_std     = 0;
-                for( int i=0; i<PID_SAMPLES; i++) {
-                    error_arr[i]     = 0;
-                    error_avg_arr[i] = 0;
-                    error_std_arr[i] = 0;
-                }
-            }
-        }
-        */
-        
         //update framerate
 #ifdef PLLTUNE
         float P = _pllparams.P;
         float I = _pllparams.I;
         float D = _pllparams.D;
 #else
-        //parameters after tuning at 30Hz
-        float P = _pllparams.framerate / 4.61f;
-        float I = 0.03f;
-        float D = _pllparams.framerate / 12.0f;
+        //tuning reshults at 30Hz
+        float P = 7.0f;
+        float I = 0.0f;
+        float D = 0.0f;
 #endif
         
 // STABILITY COMPUTATION
@@ -303,26 +232,6 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         _pllparams.error_avg_std[error_idx_sample]       = sqrt(_pllparams.error_avg_std[error_idx_sample] / (float) FLASHCAM_PLL_SAMPLES);
         _pllparams.error_avg_std_sum                    += _pllparams.error_avg_std[error_idx_sample] ; 
         
-
-                
-
-// STABILITY CHECK
-    /*
-        // Standard deviation / osciliation
-        if ( (fabs(settings->pll_error_dstd) < PID_LOCK_ERRORDSTD) && 
-            (settings->pll_locked_std == 0) ) {
-            //Standard deviation / osciliation is stable.
-            settings->pll_locked_std = frametime_gpu - _pllparams.starttime_gpu;
-        }
-        
-        // Average + Standard deviation / System
-        if ( (fabs(settings->pll_error_avg_sum/(float)PID_SAMPLES) < PID_LOCK_ERRORAVG ) &&
-             (settings->pll_locked_std > 0) && (settings->pll_locked == 0) ) {
-            //Both stable... system in lock-mode!
-            settings->pll_locked = frametime_gpu - _pllparams.starttime_gpu;
-        }
-    */
-        
 // PID UPDATE
         _pllparams.integral += ((dt_frametime_gpu/1000.0f) * 0.5 * (error + _pllparams.last_error));
 
@@ -341,27 +250,7 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         _pllparams.error_idx_sample         = (_pllparams.error_idx_sample + 1) % FLASHCAM_PLL_SAMPLES;
         _pllparams.last_error               = error;
         _pllparams.last_error_us            = error_us;
-        /*
-        if (logfile.is_open()) {
-            logfile << "\n";
-            logfile << "start:" <<  _pllparams.starttime_gpu << " ";
-            logfile << "startinterval:" <<  settings->pll_startinterval_gpu << " ";
-            logfile << "framegpu:" << frametime_gpu << " ";
-            logfile << "framegpup:" << frametime_gpu_prev << " ";
-            logfile << "framegpud:" << dframetime_gpu << " ";
-            logfile << "delayed:" << fpsreducer_sum << " ";
-            logfile << "delayedmax:" << FPSREDUCER_MAX_DELAYED << " ";
-            logfile << "delayedcnt:" << FPSREDUCER_MEASUREMENTS << " ";
-            logfile << "k:" << k << " ";
-            logfile << "pulsecpu:" << t_lastpulse << " ";
-            logfile << "error:" << error << " ";
-            logfile << "errorus:" << error_us << " ";
-            logfile << "pllperiod:" << settings->period << " ";
-            logfile << "pllfrequency:" << _pllparams.framerate << " ";
-            logfile << "plldivider:" << settings->pll_divider << " ";
-            logfile << "nframerate:" << nframerate << " ";
-        }
-*/
+
 // FPS UPDATE
 
         //if (settings->verbose)
@@ -378,38 +267,16 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         params->framerate = _pllparams.pid_framerate;
         
 #else   /* STEPRESPONSE */
-        stephold++;
-        
-        //test value for determining max frequency
-        params->framerate = 15;
-        
+        _pllparams.frames++;
+
         //next frequency?
-        if (stephold == stepholdmax) {
-            stephold = 0;
-            stepidx++;
-            //set frequency
-    //        params->framerate = steps_arr[stepidx % steps];
-        } //else {
-          //  params->framerate += ((stephold % 2)-0.5f) * (10.0f/(float)FPS_DENOMINATOR);
-       // }
-        
-        //logging
-        if (logfile.is_open()) {
-            logfile << "start:" <<  _pllparams.starttime_gpu << " ";
-            logfile << "startinterval:" <<  settings->pll_startinterval_gpu << " ";
-            logfile << "pts:" << pts << " ";
-            logfile << "fps:" << params->framerate  << " ";            
+        if ((_pllparams.frames % _pllparams.frames_next) == 0) {
+            _pllparams.step_idx++;
+            _pllparams.step_idx = _pllparams.step_idx % FLASHCAM_PLL_STEPRESPONSE_STEPS;        
         }
-                
-        //are we done?
-        if (stephold == 1) {
-            if (logfile.is_open())
-                logfile << "update:0 ";            
-            return Status::mmal_to_int(MMAL_SUCCESS);
-        }
-        if (logfile.is_open())
-            logfile << "update:1 ";            
-        
+        //set framerate
+        params->framerate = _pllparams.steps[_pllparams.step_idx];
+
 #endif  /* STEPRESPONSE */
                 
         //create rationale
@@ -658,10 +525,6 @@ int FlashCamPLL::start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, F
     if ( settings->verbose )
         fprintf(stdout, "%s: Succes.\n", __func__);
 
-    //open logfile
-    if (_pllparams.uselog)
-        logfile.open ("FlashCam_PLL_log.txt");
-    
     return 0;
 }
 
@@ -695,10 +558,6 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
     if ( settings->verbose )
         fprintf(stdout, "%s: Succes.\n", __func__);
 
-    // close logfile
-    if (logfile.is_open())
-        logfile.close();
-    
     return 0;
 }
 
@@ -735,8 +594,6 @@ void FlashCamPLL::clearParams() {
     _pllparams.error_avg_dt_avg_sum      = 0;
     _pllparams.error_avg_std_last        = 0;
     _pllparams.error_avg_std_sum         = 0;
-    
-    _pllparams.uselog                    = false;
 }
 
 void FlashCamPLL::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
