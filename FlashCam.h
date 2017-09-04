@@ -46,6 +46,10 @@
 #include "FlashCamPLL.h"
 #endif
 
+#ifdef EGL
+#include "FlashCamEGL.h"
+#endif
+
 class FlashCam 
 {
 
@@ -57,14 +61,18 @@ private:
      * used internally for communication and status-updates with the camera
      */
     typedef struct {
-        FLASHCAM_PARAMS_T   *params;            // Pointer to param set
-        FLASHCAM_SETTINGS_T *settings;          // Pointer to setting set
-        MMAL_POOL_T         *camera_pool;       // Pool of buffers for camera
-        unsigned char       *framebuffer;       // Buffer for final image   
-        unsigned int         framebuffer_size;  // Size of buffer
-        unsigned int         framebuffer_idx;   // Tracker to stitch imager properly from the camera-callback payloads
-        VCOS_SEMAPHORE_T     sem_capture;       // Semaphore indicating the completion of a frame capture
-        FLASHCAM_CALLBACK_T  callback;          // Callback to user function
+        FLASHCAM_PARAMS_T       *params;            // Pointer to param set
+        FLASHCAM_SETTINGS_T     *settings;          // Pointer to setting set
+        MMAL_POOL_T             *camera_pool;       // Pool of buffers for camera
+        unsigned char           *framebuffer;       // Buffer for final image   
+        unsigned int             framebuffer_size;  // Size of buffer
+        unsigned int             framebuffer_idx;   // Tracker to stitch imager properly from the camera-callback payloads
+        VCOS_SEMAPHORE_T         sem_capture;       // Semaphore indicating the completion of a frame capture
+        FLASHCAM_CALLBACK_T      callback;          // Callback to user function
+#ifdef EGL  
+        MMAL_QUEUE_T            *opengl_queue       // Pointer to OpenGL Queue
+        FLASHCAM_CALLBACK_EGL_T  callback_egl;      // OpenGL Callback to user function
+#endif
     } FLASHCAM_PORT_USERDATA_T;
     
     //private variables
@@ -78,6 +86,9 @@ private:
     MMAL_POOL_T                *_camera_pool        = NULL;
     unsigned char              *_framebuffer        = NULL;
     FLASHCAM_PORT_USERDATA_T    _userdata           = {};
+#ifdef EGL
+    MMAL_QUEUE_T               *_opengl_queue       = NULL;
+#endif
 #ifdef BUILD_FLASHCAM_WITH_PLL
     FlashCamPLL                 _PLL;
 #endif
@@ -123,6 +134,9 @@ public:
     
     //callback options --> for when a full frame is received
     void setFrameCallback(FLASHCAM_CALLBACK_T callback);
+#ifdef EGL
+    void setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback);
+#endif
     void resetFrameCallback();
         
     /******************************************/

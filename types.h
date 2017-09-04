@@ -116,6 +116,10 @@ typedef struct {
                                                 //  - Note that `sensormode` is also defined as `params`. It is located at these locations as it
                                                 //    it is a `param`, but needs to be defined before the camera is initialised.
     
+    unsigned int useOpenGL                      // Framecaptures are stored and provided in the callback via OpenGL textures instead of plain memory buffers.
+                                                // Note: Captured frame data stays in GPU domain during texture creation.
+                                                // Note: Only works in video mode.
+    
 #ifdef BUILD_FLASHCAM_WITH_PLL  
     // PLL: Phase Lock Loop ==> Allows the camera (in videomode) to send lightpulse/flash upon frameexposure.
     //                          The Raspberry firmware only support flash when in capture mode, hence this option.

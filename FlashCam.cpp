@@ -79,9 +79,6 @@ void FlashCam::clear() {
         //clear old values
         destroyComponents();
         vcos_semaphore_delete(&_userdata.sem_capture);
-//#ifdef BUILD_FLASHCAM_WITH_PLL
-//        delete _PLL;
-//#endif
     }
     
     _initialised = false;
@@ -183,7 +180,8 @@ int FlashCam::setupComponents() {
     //_preview_connection   : (re)set by destroyComponents()
     //_camera_pool          : (re)set by destroyComponents()
     //_framebuffer          : (re)set by destroyComponents()
-    
+    //_opengl_queue         : (re)set by destroyComponents()
+
     //set userdata
     _userdata.params            = &_params;
     _userdata.settings          = &_settings;
@@ -193,9 +191,14 @@ int FlashCam::setupComponents() {
     _userdata.framebuffer_idx   = 0;
     _userdata.callback          = NULL;
     
+#ifdef EGL
+    _userdata.callback_egl      = NULL;
+    _userdata.opengl_queue      = NULL;
+    FlashCamEGL::init();
+#endif    
+    
     //Status flags
     MMAL_STATUS_T status        = MMAL_SUCCESS;
-        
         
     //setup camera
     // - internally sets:
@@ -335,7 +338,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     format->es->video.crop.height       = _settings.height;
     format->es->video.frame_rate.num    = PREVIEW_FRAME_RATE_NUM;
     format->es->video.frame_rate.den    = PREVIEW_FRAME_RATE_DEN;
-    
+        
     //Update preview-port with set format
     if ((status = mmal_port_format_commit(preview_port)) != MMAL_SUCCESS ) {
         vcos_log_error("%s: Preview format couldn't be set (%u)", __func__, status);
@@ -345,7 +348,12 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     
     //Video format ==> same as Preview, except for encoding (YUV!)
     format = video_port->format;
-    format->encoding                    = MMAL_ENCODING_I420;
+    if (_setting.useOpenGL) {
+        //For openGL we require the OPAQUE (= special GPU format) encoding.
+        format->encoding                = MMAL_ENCODING_OPAQUE
+    } else {
+        format->encoding                = MMAL_ENCODING_I420;
+    }
     format->encoding_variant            = MMAL_ENCODING_I420;     
     format->es->video.width             = _settings.width;
     format->es->video.height            = _settings.height;
@@ -355,6 +363,22 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     format->es->video.crop.height       = _settings.height;
     format->es->video.frame_rate.num    = VIDEO_FRAME_RATE_NUM;
     format->es->video.frame_rate.den    = VIDEO_FRAME_RATE_DEN;
+    
+#ifdef EGL
+    /* Enable ZERO_COPY mode on the preview port which instructs MMAL to only
+     * pass the 4-byte opaque buffer handle instead of the contents of the opaque
+     * buffer.
+     * The opaque handle is resolved on VideoCore by the GL driver when the EGL
+     * image is created.
+     */
+    if (_setting.useOpenGL) {
+        if ((status = mmal_port_parameter_set_boolean(video_port, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE)) != MMAL_SUCCESS ) {
+            vcos_log_error("%s: Failed to enable zero copy on video port (%u)", __func__, status);
+            destroyComponents();        
+            return status;
+        }
+    }
+#endif
     
     //Update capture-port with set format
     if ((status = mmal_port_format_commit(video_port)) != MMAL_SUCCESS ) {
@@ -463,6 +487,14 @@ void FlashCam::destroyComponents() {
     if (_framebuffer) 
         delete[] _framebuffer;
     
+#ifdef EGL
+    if (_opengl_queue) {
+        mmal_queue_destroy( _opengl_queue );
+        _opengl_queue = NULL;
+    }
+    FlashCamEGL::destroy();
+#endif
+
     // Reset pointers
     _preview_connection = NULL;
     _preview_component  = NULL;
@@ -530,66 +562,60 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
     
     //retrieve userdata
     FLASHCAM_PORT_USERDATA_T *userdata = (FLASHCAM_PORT_USERDATA_T *)port->userdata;
-    
+          
     //is userdata properly set?
     if (userdata) {
         
         // Are there bytes to write?
         if (buffer->length) {
             
-            // We are decoding YUV packages
-            // - 4/6 = Y
-            // - 1/6 = U
-            // - 1/6 = V
-            
-            unsigned int length_Y = (buffer->length << 2) / 6;
-            unsigned int length_U = (buffer->length - length_Y) >> 1;
-            unsigned int length_V = length_U;
-            
-            unsigned int offset_Y = userdata->framebuffer_idx;
-            unsigned int offset_U = userdata->settings->height * userdata->settings->width * 1.00 + (userdata->framebuffer_idx >> 2);
-            unsigned int offset_V = userdata->settings->height * userdata->settings->width * 1.25 + (userdata->framebuffer_idx >> 2);
-                                                
-            if (userdata->settings->verbose) {
-           //     fprintf(stdout, "%s, Copying %d bytes @ %d (%d x %d)\n", 
-           //             __func__, buffer->length, userdata->framebuffer_idx, 
-            //            userdata->settings->height, userdata->settings->width);
+            //OpenGL processing?
+            if (userdata->settings->useOpenGL) {
+#ifdef EGL      //push to queue, unlock buffer, update PLL and return.
+                mmal_queue_put(userdata->opengl_queue, buffer);
+#else 
+                vcos_log_error("%s: OpenGL Support not build." , __func__);
+#endif
                 
-                /*
-                fprintf(stderr, "Y     : %d @ %d\n", length_Y, offset_Y);   
-                fprintf(stderr, "U     : %d @ %d\n", length_U, offset_U);   
-                fprintf(stderr, "V     : %d @ %d\n", length_V, offset_V);   
-                fprintf(stderr, "Total : %d (%d)\n", length_Y + length_U + length_V, buffer->length);   
-                 */
-                /*
-                fprintf(stderr, "Buffervalues: \n");
-                fprintf(stderr, "- next      : %p\n", buffer->next);
-                fprintf(stderr, "- cmd       : %d\n", buffer->cmd);
-                fprintf(stderr, "- alloc_size: %d\n", buffer->alloc_size);
-                fprintf(stderr, "- length    : %d\n", buffer->length);
-                fprintf(stderr, "- offset    : %d\n", buffer->offset);
-                fprintf(stderr, "- flags     : %d\n", buffer->flags);
-                fprintf(stderr, "- pts       : %d\n", buffer->pts);
-                fprintf(stderr, "- dts       : %d\n", buffer->dts);
-                fprintf(stderr, "- type      : %d\n", buffer->type);
-                 */
-            }
-            //max index to be written
-            max_idx = offset_V + length_V;
-            
-            //does it fit in buffer?
-            if ( max_idx > userdata->framebuffer_size ) {
-                vcos_log_error("%s: Framebuffer full (%d > %d) - aborting.." , __func__, max_idx , userdata->framebuffer_size );
-                abort = 1;
+#ifdef BUILD_FLASHCAM_WITH_PLL
+                FlashCamPLL::update(port, userdata->settings, userdata->params, buffer->pts);
+#endif
+                mmal_buffer_header_mem_unlock(buffer);
+                vcos_semaphore_post(&(userdata->sem_capture));
+                return;
+                
+                // `normal` processing
             } else {
-                //copy Y
-                memcpy ( &userdata->framebuffer[offset_Y] , &buffer->data[0]                   , length_Y );
-                //copy U
-                memcpy ( &userdata->framebuffer[offset_U] , &buffer->data[length_Y]            , length_U );
-                //copy V
-                memcpy ( &userdata->framebuffer[offset_V] , &buffer->data[length_Y + length_U] , length_V );
-                //update index
-                userdata->framebuffer_idx += length_Y;
+                    
+                // We are decoding YUV packages
+                // - 4/6 = Y
+                // - 1/6 = U
+                // - 1/6 = V
+                unsigned int length_Y = (buffer->length << 2) / 6;
+                unsigned int length_U = (buffer->length - length_Y) >> 1;
+                unsigned int length_V = length_U;
+                
+                unsigned int offset_Y = userdata->framebuffer_idx;
+                unsigned int offset_U = userdata->settings->height * userdata->settings->width * 1.00 + (userdata->framebuffer_idx >> 2);
+                unsigned int offset_V = userdata->settings->height * userdata->settings->width * 1.25 + (userdata->framebuffer_idx >> 2);
+                                                    
+                //max index to be written
+                max_idx = offset_V + length_V;
+                
+                //does it fit in buffer?
+                if ( max_idx > userdata->framebuffer_size ) {
+                    vcos_log_error("%s: Framebuffer full (%d > %d) - aborting.." , __func__, max_idx , userdata->framebuffer_size );
+                    abort = 1;
+                } else {
+                    //copy Y
+                    memcpy ( &userdata->framebuffer[offset_Y] , &buffer->data[0]                   , length_Y );
+                    //copy U
+                    memcpy ( &userdata->framebuffer[offset_U] , &buffer->data[length_Y]            , length_U );
+                    //copy V
+                    memcpy ( &userdata->framebuffer[offset_V] , &buffer->data[length_Y + length_U] , length_V );
+                    //update index
+                    userdata->framebuffer_idx += length_Y;
+                }
             }
         }
         
@@ -604,7 +630,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
     } else {
         vcos_log_error("%s: Received a camera still buffer callback with no state", __func__);
     }
-    
+
     // release buffer back to the pool
     mmal_buffer_header_mem_unlock(buffer);
     mmal_buffer_header_release(buffer);
@@ -625,14 +651,13 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
     //post that we are done
     if (abort) {
         vcos_semaphore_post(&(userdata->sem_capture));
-    } else if (complete) {
+    } else if (complete) {        
         if (userdata->callback)
             userdata->callback( userdata->framebuffer , userdata->settings->width , userdata->settings->height);
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
         FlashCamPLL::update(port, userdata->settings, userdata->params, presentationtime);
 #endif
-        
         //release semaphore
         userdata->framebuffer_idx = 0;
         vcos_semaphore_post(&(userdata->sem_capture));
@@ -675,6 +700,13 @@ int FlashCam::startCapture() {
     if (_settings.verbose)
         fprintf(stdout, "%s: Starting capture\n", __func__);
 
+#ifdef EGL
+    //start EGL thread for processing
+    if (_settings.useOpenGL) {
+        FlashCamEGL::start(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], &_userdata);
+    }
+#endif 
+        
     if (_settings.mode == FLASHCAM_MODE_VIDEO) {
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
@@ -763,7 +795,12 @@ int FlashCam::stopCapture() {
         fprintf(stderr, "%s: Cannot stop camera. Unknown mode (%u)\n", __func__, _settings.mode);
         return Status::mmal_to_int(MMAL_EINVAL);
     }
-
+    
+#ifdef EGL
+    //Stop EGL thread
+    FlashCamEGL::stop();
+#endif 
+    
     //camera inactive
     _active = false;
     
@@ -780,6 +817,13 @@ void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_T callback) {
     _userdata.callback = callback;
 }
 
+#ifdef EGL
+void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback) {
+    if (_active) return; //no changer/reset while in capturemode
+    _userdata_egl.callback = callback;
+}
+#endif 
+
 void FlashCam::resetFrameCallback() {
     if (_active) return; //no changer/reset while in capturemode
     _userdata.callback = NULL;
@@ -795,6 +839,7 @@ void FlashCam::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
     settings->verbose       = 1;
     settings->update        = 0;
     settings->mode          = FLASHCAM_MODE_CAPTURE;
+    settings->useOpenGL     = 0;
 #ifdef BUILD_FLASHCAM_WITH_PLL
     FlashCamPLL::getDefaultSettings(settings);
 #endif    
@@ -807,6 +852,7 @@ void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stdout, "Verbose      : %d\n", settings->verbose);
     fprintf(stdout, "Update       : %d\n", settings->update);
     fprintf(stdout, "Camera-Mode  : %d\n", settings->mode);    
+    fprintf(stdout, "OpenGL       : %d\n", settings->useOpenGL);    
 #ifdef BUILD_FLASHCAM_WITH_PLL
     FlashCamPLL::printSettings(settings);
 #endif    
@@ -955,6 +1001,18 @@ int FlashCam::setSettingCaptureMode( FLASHCAM_MODE_T  mode ) {
     } else {
         _userdata.camera_pool = _camera_pool;
     }
+    
+#ifdef EGL
+    if (_settings.useOpenGL) {
+        _opengl_queue = mmal_queue_create();
+        if (! _opengl_queue ) {
+            vcos_log_error("Error allocating OpenGL queue");
+            return Status::mmal_to_int(MMAL_ENOMEM);
+        } else {
+            _userdata.opengl_queue = _opengl_queue;
+        }
+    }
+#endif
     
     //set userdata
     new_port->userdata = (struct MMAL_PORT_USERDATA_T *)&_userdata;
