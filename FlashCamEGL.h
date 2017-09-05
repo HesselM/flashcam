@@ -56,6 +56,8 @@ namespace FlashCamEGL {
     int start(MMAL_PORT_T *port, FLASHCAM_PORT_USERDATA_T *userdata);
     void stop();
     void destroy();
+    
+    void eglDispError();
 }
 
 #endif /* FlashCamEGL_h */

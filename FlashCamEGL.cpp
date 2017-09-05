@@ -39,6 +39,9 @@
 
 #include <assert.h>
 #include <bcm_host.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
 
 #define  check() assert(glGetError() == 0)
 #define rcheck() assert(EGL_FALSE != result)
@@ -144,18 +147,13 @@ namespace FlashCamEGL {
         glEnable (GL_BLEND); check();
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);check();
         
-        glEnable(GL_TEXTURE_EXTERNAL_OES);
-        check();
+        //glEnable(GL_TEXTURE_EXTERNAL_OES);
+        //eglDispError();
+        //check();
         
         //create texture
         glGenTextures(1, &state->texture);check();
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, state->texture);check();
-        //Scaling: nearest (=no) interpolation for scaling down and up.
-        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);check();
-        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_NEAREST);check();
-        //Wrapping: repeat. Only use (s,t) as we are using a 2D texture
-        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_REPEAT);check();
-        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_REPEAT);check();
 
         // 8. Set background color and clear buffers
         //glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
@@ -213,6 +211,14 @@ namespace FlashCamEGL {
                     glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, state->img);
                     check();
 
+                    //Scaling: nearest (=no) interpolation for scaling down and up.
+                    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);check();
+                    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_NEAREST);check();
+                    //Wrapping: repeat. Only use (s,t) as we are using a 2D texture
+//                    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_REPEAT);check();
+//                    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_REPEAT);check();
+
+                    
                     // release and lock buffer of current EGLImage
                     if (state->buffer_img)
                         mmal_buffer_header_release(state->buffer_img);
@@ -259,6 +265,8 @@ namespace FlashCamEGL {
     int start(MMAL_PORT_T *port, FLASHCAM_PORT_USERDATA_T *userdata) {
         VCOS_STATUS_T status;
 
+        fprintf(stdout, "EGL:starting..\n");
+
         //set basic settings
         FlashCamEGL::state.stop     = false;
         FlashCamEGL::state.update   = true;
@@ -266,10 +274,14 @@ namespace FlashCamEGL {
         FlashCamEGL::state.userdata = userdata;
         FlashCamEGL::state.img      = EGL_NO_IMAGE_KHR;
         
+        fprintf(stdout, "- starting worker..\n");
+
         //start worker thread
         status = vcos_thread_create(&(FlashCamEGL::state.worker_thread), "FlashCamEGL-worker", NULL, FlashCamEGL::worker, &(FlashCamEGL::state));
         if (status != VCOS_SUCCESS)
             vcos_log_error("%s: Failed to start `FlashCamEGL-worker` (%d)", VCOS_FUNCTION, status);
+
+        fprintf(stdout, "- done.\n");
 
         //return
         return (status == VCOS_SUCCESS ? 0 : -1);
@@ -278,16 +290,21 @@ namespace FlashCamEGL {
     
     
     
-    void stop() {        
+    void stop() {      
+        fprintf(stdout, "EGL:stopping..\n");
+
         // STOP SIGNAL
         if (!FlashCamEGL::state.stop) {
             //vcos_log_trace("Stopping GL preview");
+            fprintf(stdout, "- worker is running\n");
 
             //notify worker we are done. 
             //  As the worker blocks due to the sempahore, we need to set the status and post an update
             FlashCamEGL::state.stop = true;
             vcos_semaphore_post(&(FlashCamEGL::state.userdata->sem_capture));
             
+            fprintf(stdout, "- Waiting for worker\n");
+
             //Wait for worker to terminate.
             vcos_thread_join(&(FlashCamEGL::state.worker_thread), NULL);
             
@@ -305,6 +322,8 @@ namespace FlashCamEGL {
             eglDestroyContext(FlashCamEGL::state.display, FlashCamEGL::state.context);
             eglDestroySurface(FlashCamEGL::state.display, FlashCamEGL::state.surface);
             eglTerminate(FlashCamEGL::state.display);
+            
+            fprintf(stdout, "- Done\n");
         }
     }
         
@@ -312,6 +331,57 @@ namespace FlashCamEGL {
         //vcos_semaphore_delete(&(FlashCamEGL::sem_captyr));
     }
 
-
+    void eglDispError() {
+        EGLint err = eglGetError();
+        if (err != EGL_SUCCESS) {
+            switch (err) {
+                case EGL_NOT_INITIALIZED:
+                    fprintf(stdout, "EGL error: EGL_NOT_INITIALIZED, %d\n", err);
+                    break;
+                case EGL_BAD_ACCESS:
+                    fprintf(stdout, "EGL error: EGL_BAD_ACCESS, %d\n", err);
+                    break;
+                case EGL_BAD_ALLOC:
+                    fprintf(stdout, "EGL error: EGL_BAD_ALLOC, %d\n", err);
+                    break;
+                case EGL_BAD_ATTRIBUTE:
+                    fprintf(stdout, "EGL error: EGL_BAD_ATTRIBUTE, %d\n", err);
+                    break;
+                case EGL_BAD_CONTEXT:
+                    fprintf(stdout, "EGL error: EGL_BAD_CONTEXT, %d\n", err);
+                    break;
+                case EGL_BAD_CONFIG:
+                    fprintf(stdout, "EGL error: EGL_BAD_CONFIG, %d\n", err);
+                    break;
+                case EGL_BAD_CURRENT_SURFACE:
+                    fprintf(stdout, "EGL error: EGL_BAD_CURRENT_SURFACE, %d\n", err);
+                    break;
+                case EGL_BAD_DISPLAY:
+                    fprintf(stdout, "EGL error: EGL_BAD_DISPLAY, %d\n", err);
+                    break;
+                case EGL_BAD_SURFACE:
+                    fprintf(stdout, "EGL error: EGL_BAD_SURFACE, %d\n", err);
+                    break;
+                case EGL_BAD_MATCH:
+                    fprintf(stdout, "EGL error: EGL_BAD_MATCH, %d\n", err);
+                    break;
+                case EGL_BAD_PARAMETER:
+                    fprintf(stdout, "EGL error: EGL_BAD_PARAMETER, %d\n", err);
+                    break;
+                case EGL_BAD_NATIVE_PIXMAP:
+                    fprintf(stdout, "EGL error: EGL_BAD_NATIVE_PIXMAP, %d\n", err);
+                    break;
+                case EGL_BAD_NATIVE_WINDOW:
+                    fprintf(stdout, "EGL error: EGL_BAD_NATIVE_WINDOW, %d\n", err);
+                    break;
+                case EGL_CONTEXT_LOST:
+                    fprintf(stdout, "EGL error: EGL_CONTEXT_LOST, %d\n", err);
+                    break;
+                default:
+                    fprintf(stdout, "EGL error: Unkown (%d)\n", err);
+                    break;
+            }
+        }
+    }
     
 }

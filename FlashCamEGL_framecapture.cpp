@@ -76,7 +76,7 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
         //fprintf(stdout, "frame (%d)\n", captured);
         //captured = 1;
         //memcpy(Y.data, &(frame[0]), w*h);
-        //captured = 2;
+    captured = 2;
     
 }
 
