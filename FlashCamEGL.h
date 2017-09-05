@@ -47,7 +47,7 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 
-typedef void (*FLASHCAM_CALLBACK_EGL_T) (GLuint texid, int w, int h);
+typedef void (*FLASHCAM_CALLBACK_EGL_T) (EGLImageKHR *img, int w, int h);
 
 namespace FlashCamEGL {
     int init();
