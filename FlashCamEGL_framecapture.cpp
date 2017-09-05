@@ -189,6 +189,8 @@ int main(int argc, const char **argv) {
         //stop capturing
         FlashCam::get().stopCapture();   
         
+        fprintf(stdout, "Awaiting key..\n");
+
         //display image
         cv::imshow ("Y", Y);
         key = (char) cv::waitKey(0);   

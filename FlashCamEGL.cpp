@@ -54,7 +54,7 @@ namespace FlashCamEGL {
     //worker thread: processed captured frames
     static void *worker(void *arg) {
         FLASHCAM_EGL_t* state = (FLASHCAM_EGL_t*) arg;
-
+        
         MMAL_BUFFER_HEADER_T *buffer;
         MMAL_STATUS_T status;
         
@@ -66,38 +66,32 @@ namespace FlashCamEGL {
             
             //wait for update
             vcos_semaphore_wait(&(state->userdata->sem_capture));
-            
-            // Do we need to continue?
-            if (!state->stop) {
+//            fprintf(stdout, "----semaphore----\n");
+
+            // Do we need to continue or are we done?
+            // --> as we are using countin-semaphores, only process a single buffer
+            if ((!state->stop) && ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)) {                
+                // OPAQUE ==> TEXTURE
+                mmalbuf2TextureOES_internal(buffer);
                 
-                // Send empty buffers to camera port
-                while ((buffer = mmal_queue_get(state->userdata->camera_pool->queue)) != NULL) {
-                    if ((status = mmal_port_send_buffer(state->port, buffer)) != MMAL_SUCCESS) {
-                        vcos_log_error("Failed to send buffer to %s", state->port->name);
-                    }
-                }
+                //callback user..
+                if (state->userdata->callback_egl)
+                    state->userdata->callback_egl( state->texture, &(state->img) , state->userdata->settings->width , state->userdata->settings->height);
                 
-                // Process elements from buffer
-                while ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL) {
-                    
-                    // OPAQUE ==> TEXTURE
-                    mmalbuf2TextureOES_internal(buffer);
-                                        
-                    //callback user..
-                    if (state->userdata->callback_egl)
-                        state->userdata->callback_egl( state->texture, &(state->img) , state->userdata->settings->width , state->userdata->settings->height);
+                //unlock & release buffer
+                mmal_buffer_header_mem_unlock(buffer);
+                mmal_buffer_header_release(buffer);
+                
+                //send buffer pack to pool
+                if ((status = mmal_port_send_buffer(state->port, buffer)) != MMAL_SUCCESS) {
+                    vcos_log_error("Failed to send buffer to %s", state->port->name);
                 }
             }
         }
-        
-        // Make sure all buffers are returned on exit //
+        // Make sure all buffers are returned on exit
         while ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)
             mmal_buffer_header_release(buffer);        
     }
-
-    
-    
-    
     
     
     int init() {

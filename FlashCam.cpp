@@ -554,6 +554,7 @@ void FlashCam::control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer)
 void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
     int abort           = 0; //flag for detecting if we need to abort due to error
     int complete        = 0; //flag for detecting if a full frame is recieved
+    int discard         = 0; //flag for detecting if we need to discard buffer
     int max_idx         = 0; //flag for detecting if _framebuffer is out of memory
     uint64_t presentationtime = 0;
     
@@ -568,23 +569,32 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
         
         // Are there bytes to write?
         if (buffer->length) {
+
+#ifdef BUILD_FLASHCAM_WITH_PLL
+            FlashCamPLL::update(port, userdata->settings, userdata->params, buffer->pts);
+#endif
             
             //OpenGL processing?
             if (userdata->settings->useOpenGL) {
-#ifdef EGL      //push to queue, unlock buffer, update PLL and return.
-                mmal_queue_put(userdata->opengl_queue, buffer);
+#ifdef EGL      
+                unsigned int length = mmal_queue_length(userdata->opengl_queue);
+                //fprintf(stdout, "%s: QueueSize - %d (%d)  \n", __func__, length, port->buffer_num);
+                
+                //push to queue, unlock buffer, update PLL and return.
+                if ( length + 1 < port->buffer_num) {
+                    mmal_queue_put(userdata->opengl_queue, buffer);
+                    
+                    fprintf(stdout, "%s: Posting...\n", __func__);
+                    vcos_semaphore_post(&(userdata->sem_capture));
+
+                    //buffer released by OpenGL worker.
+                    return;
+                } 
+                fprintf(stdout, "%s: DISCARD! \n", __func__);
 #else 
                 vcos_log_error("%s: OpenGL Support not build." , __func__);
 #endif
-                
-#ifdef BUILD_FLASHCAM_WITH_PLL
-                FlashCamPLL::update(port, userdata->settings, userdata->params, buffer->pts);
-#endif
-                mmal_buffer_header_mem_unlock(buffer);
-                fprintf(stdout, "%s: Posting...\n", __func__);
-                vcos_semaphore_post(&(userdata->sem_capture));
-                return;
-                
+                discard = 1;
                 // `normal` processing
             } else {
                     
@@ -620,14 +630,16 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
             }
         }
         
-        // Check end of frame or error
-        if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_TRANSMISSION_FAILED)    
-            abort = 1;
-        
-        if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_FRAME_END)              
-            complete = 1;
-        
-        presentationtime = buffer->pts;
+        if (discard == 0) {
+            // Check end of frame or error
+            if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_TRANSMISSION_FAILED)    
+                abort = 1;
+            
+            if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_FRAME_END)              
+                complete = 1;
+            
+            presentationtime = buffer->pts;
+        }
     } else {
         vcos_log_error("%s: Received a camera still buffer callback with no state", __func__);
     }
@@ -649,19 +661,18 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
             vcos_log_error("%s: Unable to return the buffer to the camera still port", __func__);
     }
     
-    //post that we are done
-    if (abort) {
-        vcos_semaphore_post(&(userdata->sem_capture));
-    } else if (complete) {        
-        if (userdata->callback)
-            userdata->callback( userdata->framebuffer , userdata->settings->width , userdata->settings->height);
-        
-#ifdef BUILD_FLASHCAM_WITH_PLL
-        FlashCamPLL::update(port, userdata->settings, userdata->params, presentationtime);
-#endif
-        //release semaphore
-        userdata->framebuffer_idx = 0;
-        vcos_semaphore_post(&(userdata->sem_capture));
+    if (discard == 0) {
+        //post that we are done
+        if (abort) {
+            vcos_semaphore_post(&(userdata->sem_capture));
+        } else if (complete) {        
+            if (userdata->callback)
+                userdata->callback( userdata->framebuffer , userdata->settings->width , userdata->settings->height);
+            
+            //release semaphore
+            userdata->framebuffer_idx = 0;
+            vcos_semaphore_post(&(userdata->sem_capture));
+        }
     }
 }
 
