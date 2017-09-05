@@ -40,20 +40,22 @@
 
 #include "types.h"
 
+#include <GLES/gl.h>
+#include <GLES/glext.h>
 #include "GLES2/gl2.h"
 #include "EGL/egl.h"
 #include "EGL/eglext.h"
+#include "EGL/eglext_brcm.h"
 
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 
-typedef void (*FLASHCAM_CALLBACK_EGL_T) (EGLImageKHR *img, int w, int h);
 
 namespace FlashCamEGL {
     int init();
-    int start(MMAL_QUEUE_T *queue, FLASHCAM_CALLBACK_EGL_T callback);
-    int stop();
-    int destroy();
+    int start(MMAL_PORT_T *port, FLASHCAM_PORT_USERDATA_T *userdata);
+    void stop();
+    void destroy();
 }
 
 #endif /* FlashCamEGL_h */

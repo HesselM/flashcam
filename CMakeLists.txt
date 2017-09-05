@@ -64,7 +64,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 # Which test?
 if (FRAMECAPTUREEGL)
     message(">> Building for OpenGL framecapturing (FRAMECAPTUREEGL=ON)")
-    set(FLASHCAM_SOURCES FlashCamEGL_framecapture.cpp; ${FLASHCAM_SOURCES})
+    set(FLASHCAM_SOURCES FlashCamEGL.cpp; FlashCamEGL_framecapture.cpp; ${FLASHCAM_SOURCES})
     add_definitions( -DEGL)
 elseif (FRAMECAPTURE)
     message(">> Building for framecapturing (FRAMECAPTURE=ON)")
@@ -96,7 +96,7 @@ target_link_libraries(flashcam ${BCMHOST_LIBRARIES})
 target_link_libraries(flashcam m)
 
 if (FRAMECAPTUREEGL)
-    target_link_libraries(egltest ${EGL_LIBRARIES})
+    target_link_libraries(flashcam ${EGL_LIBRARIES})
 endif()
 
 if (WIRINGPI_FOUND) 

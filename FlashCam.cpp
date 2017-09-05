@@ -158,11 +158,11 @@ int FlashCam::setupComponents() {
         vcos_log_register("FlashCam", VCOS_LOG_CATEGORY);
         
         // create & init semaphore
-        if (vcos_semaphore_create(&_userdata.sem_capture, "FlashCam-sem", 0) != VCOS_SUCCESS) {
+        if (vcos_semaphore_create(&_userdata.sem_capture, "FlashCam_sem_captured", 0) != VCOS_SUCCESS) {
             vcos_log_error("%s: Failed to create semaphore", __func__);
             return Status::mmal_to_int(MMAL_EINVAL);
         }    
-        
+                
         //setup default camera params 
         getDefaultParams(&_params);
     }
@@ -348,9 +348,9 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     
     //Video format ==> same as Preview, except for encoding (YUV!)
     format = video_port->format;
-    if (_setting.useOpenGL) {
+    if (_settings.useOpenGL) {
         //For openGL we require the OPAQUE (= special GPU format) encoding.
-        format->encoding                = MMAL_ENCODING_OPAQUE
+        format->encoding                = MMAL_ENCODING_OPAQUE;
     } else {
         format->encoding                = MMAL_ENCODING_I420;
     }
@@ -371,7 +371,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
      * The opaque handle is resolved on VideoCore by the GL driver when the EGL
      * image is created.
      */
-    if (_setting.useOpenGL) {
+    if (_settings.useOpenGL) {
         if ((status = mmal_port_parameter_set_boolean(video_port, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE)) != MMAL_SUCCESS ) {
             vcos_log_error("%s: Failed to enable zero copy on video port (%u)", __func__, status);
             destroyComponents();        
@@ -820,7 +820,7 @@ void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_T callback) {
 #ifdef EGL
 void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback) {
     if (_active) return; //no changer/reset while in capturemode
-    _userdata_egl.callback = callback;
+    _userdata.callback_egl = callback;
 }
 #endif 
 

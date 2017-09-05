@@ -35,25 +35,27 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#include "FlashCamEGL.hpp"
+#include "FlashCamEGL.h"
 
 #include <assert.h>
+#include <bcm_host.h>
 
 #define  check() assert(glGetError() == 0)
+#define rcheck() assert(EGL_FALSE != result)
 
 
 namespace FlashCamEGL {
 
-    typdef struct {
+    typedef struct {
         bool                        update;             // worker action: update texture
         bool                        stop;               // worker action: terminate
         MMAL_PORT_T                 *port;              // Video port reference
         FLASHCAM_PORT_USERDATA_T    *userdata;          // Reference to userdata
-        VCOS_THREAD_T               *worker_thread;     // Thread processing queue
-        
+        VCOS_THREAD_T               worker_thread;      // Thread processing queue
+                
         // texture/EGLImage to be written to
         GLuint                      texture;            // Target Texture
-        EGLImageKHR                 img                 // Target EGLImage
+        EGLImageKHR                 img;                // Target EGLImage
 
         // Buffer used but EGLImage
         MMAL_BUFFER_HEADER_T *buffer_img;
@@ -85,8 +87,8 @@ namespace FlashCamEGL {
         };
         
         static const EGLint pbufferAttr[] = {
-            EGL_WIDTH,  width,
-            EGL_HEIGHT, height,
+            EGL_WIDTH,  (const EGLint) state->userdata->settings->width,
+            EGL_HEIGHT, (const EGLint) state->userdata->settings->height,
             EGL_NONE,
         };
         
@@ -146,25 +148,27 @@ namespace FlashCamEGL {
         check();
         
         //create texture
-        glGenTextures(1, &state->texture);
-        check();
-        
+        glGenTextures(1, &state->texture);check();
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, state->texture);check();
+        //Scaling: nearest (=no) interpolation for scaling down and up.
+        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);check();
+        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_NEAREST);check();
+        //Wrapping: repeat. Only use (s,t) as we are using a 2D texture
+        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_REPEAT);check();
+        glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_REPEAT);check();
+
         // 8. Set background color and clear buffers
         //glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
         //glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         //check();
     }
     
-    
-    
-    
-    
     //worker thread: processed captured frames
-    static int worker(void *arg) {
-        FLASHCAM_EGL_t* state = arg;
+    static void *worker(void *arg) {
+        FLASHCAM_EGL_t* state = (FLASHCAM_EGL_t*) arg;
 
         MMAL_BUFFER_HEADER_T *buffer;
-        MMAL_STATUS_T st;
+        MMAL_STATUS_T status;
         
 //        vcos_log_trace("%s: port %p", VCOS_FUNCTION, preview_port);
 
@@ -174,47 +178,50 @@ namespace FlashCamEGL {
         // process buffer
         while (!state->stop) {
             
+            //wait for update
+            vcos_semaphore_wait(&(state->userdata->sem_capture));
             
-            
-            // Send empty buffers to camera port
-            while ((buffer = mmal_queue_get(state->userdata->camera_pool->queue)) != NULL) {
-                if ((status = mmal_port_send_buffer(state->port, buffer)) != MMAL_SUCCESS) {
-                    vcos_log_error("Failed to send buffer to %s", state->port->name);
+            // Do we need to continue?
+            if (!state->stop) {
+                
+                // Send empty buffers to camera port
+                while ((buffer = mmal_queue_get(state->userdata->camera_pool->queue)) != NULL) {
+                    if ((status = mmal_port_send_buffer(state->port, buffer)) != MMAL_SUCCESS) {
+                        vcos_log_error("Failed to send buffer to %s", state->port->name);
+                    }
                 }
-            }
-            
-            
-            // Process elements from buffer
-            while ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL) {
                 
-                // OPAQUE ==> TEXTURE
-                EGLClientBuffer *data = buffer->data;
                 
-                //get texture id
-                glBindTexture(GL_TEXTURE_EXTERNAL_OES, &(state->texture)); check();
-                
-                //destroy previous image
-                if (state->img != EGL_NO_IMAGE_KHR) {
-                    eglDestroyImageKHR(state->display, state->img);
-                    state->img = EGL_NO_IMAGE_KHR;
+                // Process elements from buffer
+                while ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL) {
+                    
+                    // OPAQUE ==> TEXTURE
+                    
+                    //set texture id
+                    glBindTexture(GL_TEXTURE_EXTERNAL_OES, state->texture); check();
+                    
+                    //destroy previous image
+                    if (state->img != EGL_NO_IMAGE_KHR) {
+                        eglDestroyImageKHR(state->display, state->img);
+                        state->img = EGL_NO_IMAGE_KHR;
+                    }
+
+                    //Create new image
+                    state->img = eglCreateImageKHR(state->display, EGL_NO_CONTEXT, EGL_IMAGE_BRCM_MULTIMEDIA_Y, (EGLClientBuffer) buffer->data, NULL);
+                    check();
+                    
+                    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, state->img);
+                    check();
+
+                    // release and lock buffer of current EGLImage
+                    if (state->buffer_img)
+                        mmal_buffer_header_release(state->buffer_img);
+                    state->buffer_img = buffer;
+                    
+                    //callback user..
+                    if (state->userdata->callback_egl)
+                        state->userdata->callback_egl( state->texture, &(state->img) , state->userdata->settings->width , state->userdata->settings->height);
                 }
-
-                //Create new image
-                state->img = eglCreateImageKHR(state->display, EGL_NO_CONTEXT, EGL_IMAGE_BRCM_MULTIMEDIA_Y, data, NULL);
-                check();
-                
-                glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, state->img);
-                check();
-
-                // release and lock buffer of current EGLImage
-                if (state->buffer_img)
-                    mmal_buffer_header_release(state->buffer_img);
-                state->buffer_img = buffer;
-                
-                //callback user..
-                if (state->userdata->callback_egl)
-                    state->userdata->callback_egl( state->texture, &(state->img) , state->userdata->settings->width , state->userdata->settings->height);
-
             }
         }
         
@@ -244,21 +251,6 @@ namespace FlashCamEGL {
         vcos_log_register("FlashCam-EGL", VCOS_LOG_CATEGORY);
         vcos_log_set_level(VCOS_LOG_CATEGORY, VCOS_LOG_INFO); //VCOS_LOG_WARN
         vcos_log_trace("%s", VCOS_FUNCTION);
-        
-        //status = vcos_semaphore_create(&state->capture.start_sem, "glcap_start_sem", 1);
-        //if (status != VCOS_SUCCESS) {
-        //    vcos_log_error("%s: failed", VCOS_FUNCTION);
-        //    return -1;
-        //}
-        
-        status = vcos_semaphore_create(&state->capture.completed_sem, "glcap_completed_sem", 0);
-        if (status != VCOS_SUCCESS) {
-            vcos_log_error("%s: failed", VCOS_FUNCTION);
-            return -1;
-        }
-        
-        
-        
         return 0;
     }
     
@@ -290,7 +282,13 @@ namespace FlashCamEGL {
         // STOP SIGNAL
         if (!FlashCamEGL::state.stop) {
             //vcos_log_trace("Stopping GL preview");
+
+            //notify worker we are done. 
+            //  As the worker blocks due to the sempahore, we need to set the status and post an update
             FlashCamEGL::state.stop = true;
+            vcos_semaphore_post(&(FlashCamEGL::state.userdata->sem_capture));
+            
+            //Wait for worker to terminate.
             vcos_thread_join(&(FlashCamEGL::state.worker_thread), NULL);
             
             //destroy texture
@@ -298,7 +296,7 @@ namespace FlashCamEGL {
 
             //destroy image
             if (FlashCamEGL::state.img != EGL_NO_IMAGE_KHR) {
-                eglDestroyImageKHR(state->display, FlashCamEGL::state.img);
+                eglDestroyImageKHR(FlashCamEGL::state.display, FlashCamEGL::state.img);
                 FlashCamEGL::state.img = EGL_NO_IMAGE_KHR;
             }
             
@@ -307,7 +305,13 @@ namespace FlashCamEGL {
             eglDestroyContext(FlashCamEGL::state.display, FlashCamEGL::state.context);
             eglDestroySurface(FlashCamEGL::state.display, FlashCamEGL::state.surface);
             eglTerminate(FlashCamEGL::state.display);
-
         }
     }
+        
+    void destroy() {
+        //vcos_semaphore_delete(&(FlashCamEGL::sem_captyr));
+    }
+
+
+    
 }

@@ -42,6 +42,13 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/mmal_logging.h"
 
+#ifdef EGL
+#include "GLES2/gl2.h"
+#include "EGL/egl.h"
+#include "EGL/eglext.h"
+#endif
+
+
 #define FLASHCAM_VERSION_STRING "v0.1"
 #define DEBUG 1
 
@@ -74,6 +81,11 @@ typedef enum {
 //  - int width             : width of image
 //  - int height            : height of image
 typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
+#ifdef EGL
+typedef void (*FLASHCAM_CALLBACK_EGL_T) (GLuint texid, EGLImageKHR *img, int w, int h);
+#endif
+
+
 
 /*
  * FLASHCAM_PARAMS_T
@@ -116,10 +128,9 @@ typedef struct {
                                                 //  - Note that `sensormode` is also defined as `params`. It is located at these locations as it
                                                 //    it is a `param`, but needs to be defined before the camera is initialised.
     
-    unsigned int useOpenGL                      // Framecaptures are stored and provided in the callback via OpenGL textures instead of plain memory buffers.
+    unsigned int useOpenGL;                     // Framecaptures are stored and provided in the callback via OpenGL textures instead of plain memory buffers.
                                                 // Note: Captured frame data stays in GPU domain during texture creation.
                                                 // Note: Only works in video mode.
-    
 #ifdef BUILD_FLASHCAM_WITH_PLL  
     // PLL: Phase Lock Loop ==> Allows the camera (in videomode) to send lightpulse/flash upon frameexposure.
     //                          The Raspberry firmware only support flash when in capture mode, hence this option.
@@ -132,6 +143,32 @@ typedef struct {
                                                 //     Disabling the reducer increases processing speed, but if the target fps is too high, no lock can be obtained.
 #endif
 } FLASHCAM_SETTINGS_T;
+
+
+/*
+ * FLASHCAM_PORT_USERDATA_T
+ * used internally for communication and status-updates with the camera
+ */
+typedef struct {
+    FLASHCAM_PARAMS_T       *params;            // Pointer to param set
+    FLASHCAM_SETTINGS_T     *settings;          // Pointer to setting set
+    MMAL_POOL_T             *camera_pool;       // Pool of buffers for camera
+    unsigned char           *framebuffer;       // Buffer for final image   
+    unsigned int             framebuffer_size;  // Size of buffer
+    unsigned int             framebuffer_idx;   // Tracker to stitch imager properly from the camera-callback payloads
+    VCOS_SEMAPHORE_T         sem_capture;       // Semaphore indicating the completion of a frame capture 
+    //      - In Capturemode: used to indicate completion of frame
+    //      - In VideoMode + EGL: used to signal EGL-worker to process frame
+    FLASHCAM_CALLBACK_T      callback;          // Callback to user function
+#ifdef EGL  
+    MMAL_QUEUE_T            *opengl_queue;      // Pointer to OpenGL Queue
+    FLASHCAM_CALLBACK_EGL_T  callback_egl;      // OpenGL Callback to user function
+#endif
+} FLASHCAM_PORT_USERDATA_T;
+
+
+
+
 
 
 class Status

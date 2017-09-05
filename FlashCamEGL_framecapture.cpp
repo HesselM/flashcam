@@ -67,16 +67,17 @@
 static cv::Mat Y;
 unsigned int captured;
 
-void flashcam_callback(Gluint texid, int w, int h) {
+void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
+    fprintf(stdout, "frame (id:%d %dx%d)\n", captured, texid, w, h);
     
     // copy frame to opencv-structure
-    if (captured == 0) {
+    //if (captured == 0) {
         
         //fprintf(stdout, "frame (%d)\n", captured);
         //captured = 1;
         //memcpy(Y.data, &(frame[0]), w*h);
         //captured = 2;
-    }
+    
 }
 
 

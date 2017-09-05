@@ -55,26 +55,6 @@ class FlashCam
 
     
 private:
-    
-    /*
-     * FLASHCAM_PORT_USERDATA_T
-     * used internally for communication and status-updates with the camera
-     */
-    typedef struct {
-        FLASHCAM_PARAMS_T       *params;            // Pointer to param set
-        FLASHCAM_SETTINGS_T     *settings;          // Pointer to setting set
-        MMAL_POOL_T             *camera_pool;       // Pool of buffers for camera
-        unsigned char           *framebuffer;       // Buffer for final image   
-        unsigned int             framebuffer_size;  // Size of buffer
-        unsigned int             framebuffer_idx;   // Tracker to stitch imager properly from the camera-callback payloads
-        VCOS_SEMAPHORE_T         sem_capture;       // Semaphore indicating the completion of a frame capture
-        FLASHCAM_CALLBACK_T      callback;          // Callback to user function
-#ifdef EGL  
-        MMAL_QUEUE_T            *opengl_queue       // Pointer to OpenGL Queue
-        FLASHCAM_CALLBACK_EGL_T  callback_egl;      // OpenGL Callback to user function
-#endif
-    } FLASHCAM_PORT_USERDATA_T;
-    
     //private variables
     bool                        _initialised        = false;    // Camera initialised?
     bool                        _active             = false;    // Camera currently active?
