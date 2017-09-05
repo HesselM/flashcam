@@ -58,6 +58,7 @@ namespace FlashCamEGL {
     
     //initialize OpenGL
     void initOpenGL(FLASHCAM_EGL_t* state);
+    void clearOpenGL();
     
     //transform a MMAL-buffer into a OpenGL texture.
     // ==> Used internal state representation. 
@@ -67,7 +68,7 @@ namespace FlashCamEGL {
     
     //transform OES texture (=Lumiance only) to RGB
     void textureOES2rgb(GLuint input_texid, GLuint result_texid);
-    
+
     //generate new texture. Texture-ID is returned.
     GLuint createTexture();
     

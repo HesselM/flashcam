@@ -84,6 +84,9 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
     
     // copy frame to opencv-structure
     if (captured == 0) {
+        fprintf(stdout, "..PROCESSING..\n");
+        captured = 1;
+
         fprintf(stdout, "frame (%d)\n", captured);
         GLuint result_texid = FlashCamEGL::createTexture(); eglcheck();
         
@@ -105,6 +108,8 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
         //captured = 1;
         //memcpy(Y.data, &(frame[0]), w*h);
         captured = 2;
+    } else {
+        fprintf(stdout, "..BLOCK..\n");
     }
 }
 

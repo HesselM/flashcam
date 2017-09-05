@@ -161,26 +161,15 @@ namespace FlashCamEGL {
             //Wait for worker to terminate.
             vcos_thread_join(&(FlashCamEGL::state.worker_thread), NULL);
             
-            //destroy texture
-            glDeleteTextures(1, &FlashCamEGL::state.texture);
-
-            //destroy image
-            if (FlashCamEGL::state.img != EGL_NO_IMAGE_KHR) {
-                eglDestroyImageKHR(FlashCamEGL::state.display, FlashCamEGL::state.img);
-                FlashCamEGL::state.img = EGL_NO_IMAGE_KHR;
-            }
-            
-            //detroy openGL
-            eglMakeCurrent(FlashCamEGL::state.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            eglDestroyContext(FlashCamEGL::state.display, FlashCamEGL::state.context);
-            eglDestroySurface(FlashCamEGL::state.display, FlashCamEGL::state.surface);
-            eglTerminate(FlashCamEGL::state.display);
-            
+            //clear OpenGL
+            FlashCamEGL::clearOpenGL();
+        
             fprintf(stdout, "- Done\n");
         }
     }
         
     void destroy() {
+        
         //vcos_semaphore_delete(&(FlashCamEGL::sem_captyr));
     }    
 }
