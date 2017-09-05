@@ -35,10 +35,11 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#ifndef FlashCamEGL_h
-#define FlashCamEGL_h
+#ifndef FlashCamEGLUtil_h
+#define FlashCamEGLUtil_h
 
 #include "types.h"
+#include "FlashCamEGL.h"
 
 #include <GLES/gl.h>
 #include <GLES/glext.h>
@@ -50,34 +51,29 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 
+#define  eglcheck() assert(glGetError() == 0)
+#define reglcheck() assert(EGL_FALSE != result)
 
 namespace FlashCamEGL {
     
-    typedef struct {
-        bool                        update;             // worker action: update texture
-        bool                        stop;               // worker action: terminate
-        MMAL_PORT_T                 *port;              // Video port reference
-        FLASHCAM_PORT_USERDATA_T    *userdata;          // Reference to userdata
-        VCOS_THREAD_T               worker_thread;      // Thread processing queue
-        
-        // texture/EGLImage to be written to
-        GLuint                      texture;            // Target Texture
-        EGLImageKHR                 img;                // Target EGLImage
-        
-        // Buffer used but EGLImage
-        MMAL_BUFFER_HEADER_T *buffer_img;
-        
-        //OpenGL settings
-        EGLDisplay display;                 /// The current EGL display
-        EGLSurface surface;                 /// The current EGL surface
-        EGLContext context;                 /// The current EGL context
-        
-    } FLASHCAM_EGL_t;
+    //initialize OpenGL
+    void initOpenGL(FLASHCAM_EGL_t* state);
     
-    int init();
-    int start(MMAL_PORT_T *port, FLASHCAM_PORT_USERDATA_T *userdata);
-    void stop();
-    void destroy();    
+    //transform a MMAL-buffer into a OpenGL texture.
+    // ==> Used internal state representation. 
+    //      Result is given via UserCall-back. 
+    //      See FlashCamEGL_framecapture.cpp
+    void mmalbuf2TextureOES_internal(MMAL_BUFFER_HEADER_T *buffer);
+    
+    //transform OES texture (=Lumiance only) to RGB
+    void textureOES2rgb(GLuint input_texid, GLuint result_texid);
+    
+    //generate new texture. Texture-ID is returned.
+    GLuint createTexture();
+    
+    //print OpenGL errors (if existing)
+    void eglDispError();
 }
 
-#endif /* FlashCamEGL_h */
+
+#endif /* FlashCamEGLUtil_h */

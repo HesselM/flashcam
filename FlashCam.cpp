@@ -581,6 +581,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                 FlashCamPLL::update(port, userdata->settings, userdata->params, buffer->pts);
 #endif
                 mmal_buffer_header_mem_unlock(buffer);
+                fprintf(stdout, "%s: Posting...\n", __func__);
                 vcos_semaphore_post(&(userdata->sem_capture));
                 return;
                 

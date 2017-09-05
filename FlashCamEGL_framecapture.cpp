@@ -43,6 +43,8 @@
 //
 
 #include "FlashCam.h"
+#include "FlashCamEGL.h"
+#include "FlashCamEGLUtil.h"
 
 #include <stdlib.h>
 
@@ -51,6 +53,16 @@
 
 #include <time.h>
 #include <unistd.h>
+
+#include <GLES/gl.h>
+#include <GLES/glext.h>
+#include "GLES2/gl2.h"
+#include "EGL/egl.h"
+#include "EGL/eglext.h"
+#include "EGL/eglext_brcm.h"
+
+#define  eglcheck() assert(glGetError() == 0)
+
 
 // 0-7
 #define SENSORMODE   5
@@ -65,19 +77,35 @@
 #define CHAR_P   112
 
 static cv::Mat Y;
-unsigned int captured;
+static unsigned int captured;
 
 void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
-    fprintf(stdout, "frame (id:%d %dx%d)\n", captured, texid, w, h);
+    fprintf(stdout, "frame (id:%d %dx%d)\n", texid, w, h);
     
     // copy frame to opencv-structure
-    //if (captured == 0) {
+    if (captured == 0) {
+        fprintf(stdout, "frame (%d)\n", captured);
+        GLuint result_texid = FlashCamEGL::createTexture(); eglcheck();
         
-        //fprintf(stdout, "frame (%d)\n", captured);
+        FlashCamEGL::textureOES2rgb(texid, result_texid); eglcheck();
+        glBindTexture(GL_TEXTURE_2D, result_texid); eglcheck();
+
+        fprintf(stdout, "Starting to read..\n");
+
+        glReadPixels(0, 0,
+                     w, h,
+                     GL_RGBA,
+                     GL_UNSIGNED_BYTE,
+                     Y.data);
+        FlashCamEGL::eglDispError();
+        eglcheck();
+
+        fprintf(stdout, "Texture read\n");
+
         //captured = 1;
         //memcpy(Y.data, &(frame[0]), w*h);
-    captured = 2;
-    
+        captured = 2;
+    }
 }
 
 
@@ -131,7 +159,7 @@ int main(int argc, const char **argv) {
     FlashCam::printSettings( &settings ); 
     
     //create openCV window
-    Y.create( settings.height, settings.width, CV_8UC1 );
+    Y.create( settings.height, settings.width, CV_8UC4 );
     cv::namedWindow( "Y", cv::WINDOW_NORMAL );
     
     //intit
