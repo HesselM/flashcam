@@ -22,8 +22,8 @@ namespace FlashCamEGL {
     // ==> Used for future calls for rendering
     static FLASHCAM_EGL_t *state;
     
-    
     static GLuint progid_oes2rgb;
+    static GLuint progid_rgbblur;
     static GLuint vbufid;
     static GLuint fbufid;
     
@@ -32,22 +32,43 @@ namespace FlashCamEGL {
     
     // 2D vertex shader.    
 #define SRC_VSHADER_2D \
-"attribute vec2 position;\n" \
-"varying vec2 texcoord;\n" \
-"void main(void) {\n" \
-"   texcoord = position * vec2(0.5) + vec2(0.5);\n" \
-"   gl_Position = vec4(position, 0.0, 1.0);\n" \
-"}\n"
+    "attribute vec2 position;\n" \
+    "varying vec2 texcoord;\n" \
+    "void main(void) {\n" \
+    "   texcoord = position * vec2(0.5) + vec2(0.5);\n" \
+    "   gl_Position = vec4(position, 0.0, 1.0);\n" \
+    "}\n"
     
     // EGL_IMAGE_BRCM_MULTIMEDIA_Y is a one byte per pixel greyscale GL_LUMINANCE.
     // TODO-OPTIMISATION: 4-grayscale pixels to 1-rgba pixel
 #define SRC_FSHADER_OES2RGB \
-"#extension GL_OES_EGL_image_external : require\n" \
-"uniform samplerExternalOES tex;\n" \
-"varying vec2 texcoord;\n" \
-"void main(void) {\n" \
-"    gl_FragColor = texture2D(tex, texcoord);\n" \
-"}\n"    
+    "#extension GL_OES_EGL_image_external : require\n" \
+    "uniform samplerExternalOES tex;\n" \
+    "varying vec2 texcoord;\n" \
+    "void main(void) {\n" \
+    "    gl_FragColor = texture2D(tex, texcoord);\n" \
+    "}\n"    
+    
+    //blur shader
+#define SRC_FSHADER_RGBBLUR \
+    "varying vec2 texcoord;\n" \
+    "uniform sampler2D tex;\n" \
+    "uniform vec2 texelsize;\n" \
+    "void main(void) {\n" \
+    "    vec4 col = vec4(0);\n" \
+    "    float total_added = 0.0;\n" \
+    "    for(int xoffset = -2; xoffset <= 2; xoffset++) {\n" \
+    "        for(int yoffset = -2; yoffset <= 2; yoffset++) {\n" \
+    "            vec2 offset = vec2(xoffset,yoffset);\n" \
+    "            float prop = 1.0/(offset.x*offset.x+offset.y*offset.y+1.0);\n" \
+    "            total_added += prop;\n" \
+    "            col += prop*texture2D(tex,texcoord+offset*texelsize);\n" \
+    "        }\n" \
+    "    }\n" \
+    "    col /= total_added;\n" \
+    "    gl_FragColor = clamp(col,vec4(0),vec4(1));\n" \
+    "}\n"
+    
     
     //Source: http://www.nexcius.net/2012/11/20/how-to-load-a-glsl-shader-in-opengl-using-c/
     GLuint loadShader(std::string v, std::string f) {        
@@ -101,9 +122,9 @@ namespace FlashCamEGL {
         // Screen/framebuffer positions. As we use full screen, mapping to each corner of screen is used
         static const GLfloat vertices[] = {
             -1.0f, -1.0f,
-            1.0f, -1.0f,
+             1.0f, -1.0f,
             -1.0f,  1.0f,
-            1.0f,  1.0f
+             1.0f,  1.0f
         };
         
         GLuint id;
@@ -119,10 +140,6 @@ namespace FlashCamEGL {
         glBindFramebuffer(GL_FRAMEBUFFER, id); eglcheck();
         return id;
     }
-    
-    
-    
-    
     
     void initOpenGL(FLASHCAM_EGL_t* state) {
         //copy state
@@ -216,6 +233,9 @@ namespace FlashCamEGL {
         //Load Shaders
         //load program/buffers upon first call
         FlashCamEGL::progid_oes2rgb = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
+        FlashCamEGL::progid_rgbblur = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
+
+        //setup buffers
         FlashCamEGL::vbufid         = loadVertixBuffer();   
         FlashCamEGL::fbufid         = loadFrameBuffer();   
     }
@@ -238,6 +258,7 @@ namespace FlashCamEGL {
         glDeleteFramebuffers(1, &fbufid);
         glDeleteBuffers(1, &vbufid);
         glDeleteProgram(progid_oes2rgb);
+        glDeleteProgram(progid_rgbblur);
         
         //detroy openGL
         eglMakeCurrent(FlashCamEGL::state->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -291,12 +312,12 @@ namespace FlashCamEGL {
     }
     
 
-    void textureOES2rgb(GLuint input_texid, GLuint result_texid) {        
+    void texture2texture(GLuint input_texid, GLenum input_target,  GLuint result_texid, GLuint progid) {        
         int width  = FlashCamEGL::state->userdata->settings->width;
         int height = FlashCamEGL::state->userdata->settings->height;
     
         //select proper progam
-        glUseProgram(FlashCamEGL::progid_oes2rgb); eglcheck();        
+        glUseProgram(progid); eglcheck();        
         //Set framebuffer and render postitions
         glBindBuffer(GL_ARRAY_BUFFER, FlashCamEGL::vbufid); eglcheck();
         glBindFramebuffer(GL_FRAMEBUFFER, FlashCamEGL::fbufid); eglcheck();
@@ -307,15 +328,15 @@ namespace FlashCamEGL {
 
         //Set active texture.
         glActiveTexture(GL_TEXTURE0); eglcheck();
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, FlashCamEGL::state->texture); eglcheck();
+        glBindTexture(input_target, input_texid); eglcheck();
         
         //Set render/shader-parameters
-        glUniform1i(glGetUniformLocation(FlashCamEGL::progid_oes2rgb,"tex"), 0); //assign GL_TEXTURE0
-        glUniform2f(glGetUniformLocation(FlashCamEGL::progid_oes2rgb,"texelsize"), 1.f/width, 1.f/height);
+        glUniform1i(glGetUniformLocation(progid,"tex"), 0); //assign GL_TEXTURE0
+        glUniform2f(glGetUniformLocation(progid,"texelsize"), 1.f/width, 1.f/height);
         eglcheck();
         
         //setup format of texture
-        GLuint pos = glGetAttribLocation(FlashCamEGL::progid_oes2rgb,"position");
+        GLuint pos = glGetAttribLocation(progid,"position");
         // pos      : postion in texture
         // 2        : only x/y values (z/d is ignored)
         // GL_FLOAT : position is floating point
@@ -329,6 +350,14 @@ namespace FlashCamEGL {
         glDrawArrays ( GL_TRIANGLE_STRIP, 0, 4 ); eglcheck();
     }
     
+    
+    void textureOES2rgb(GLuint input_texid, GLuint result_texid) {        
+        texture2texture(input_texid, GL_TEXTURE_EXTERNAL_OES,  result_texid, progid_oes2rgb);       
+    }
+    
+    void textureRGBblur(GLuint input_texid, GLuint result_texid) {        
+        texture2texture(input_texid, GL_TEXTURE_2D, result_texid, progid_rgbblur);    
+    }
     
     GLuint createTexture() {
         GLuint id;

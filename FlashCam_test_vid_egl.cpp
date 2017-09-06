@@ -85,11 +85,13 @@
 //used keys
 #define CHAR_ESC 27
 #define CHAR_P   112
+#define CHAR_T   116
 
 static cv::Mat Y;
 static unsigned int captured;
 static bool stop;
 static GLuint texid_target;
+static bool useBlur;
 
 void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
     //fprintf(stdout, "frame (id:%d %dx%d)\n", texid, w, h);
@@ -104,6 +106,12 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
         
         //Update target texture
         FlashCamEGL::textureOES2rgb(texid, texid_target); eglcheck();
+        
+        //apply blur
+        if (useBlur) {
+            FlashCamEGL::textureRGBblur(texid_target, texid_target); eglcheck();
+        }
+        
         glBindTexture(GL_TEXTURE_2D, texid_target); eglcheck();
         
         //Read pixels to OpenCV array.
@@ -156,7 +164,7 @@ int main(int argc, const char **argv) {
     //PLL parameters
     FlashCam::get().setPLLEnabled(1);
     FlashCam::get().setPLLDivider(2);       //every other frame
-    FlashCam::get().setPLLPulseWidth(10*FRAMERATE);  //50% dutycycle @ 1Hz
+    FlashCam::get().setPLLPulseWidth(18);   //18ms
     FlashCam::get().setPLLOffset(0);        //no offset
     
     //get & print params
@@ -176,6 +184,7 @@ int main(int argc, const char **argv) {
     
     //init callback parameters
     stop            = false;
+    useBlur         = false;
     texid_target    = 0;
     
     //stop capturing
@@ -187,6 +196,11 @@ int main(int argc, const char **argv) {
         cv::imshow ("Y", Y);
         key = (char) cv::waitKey(1000);   
         captured = 0;
+        
+        
+        //toggle blur
+        if (key == CHAR_T)
+            useBlur = !useBlur;
     } 
     fprintf(stdout, "ESC-pressed\n");
 
