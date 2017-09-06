@@ -784,6 +784,8 @@ int FlashCam::stopCapture() {
     
     if (_settings.mode == FLASHCAM_MODE_VIDEO) {
         
+        //shutdown PLL before camera, as PLL has some internal Camera dependencies.
+        // Shutting down camera will crash PLL.
 #ifdef BUILD_FLASHCAM_WITH_PLL
         if (_PLL.stop( &_settings, &_params )) {
             fprintf(stderr, "%s: PLL cannot be stopped.\n", __func__);
@@ -812,6 +814,11 @@ int FlashCam::stopCapture() {
     
 #ifdef EGL
     //Stop EGL thread
+    // This needs to be done after shutting down the camera, 
+    //  ensuring that pending frames/buffers are processed
+    //  and pushed to the appropiate inter-thread queues. 
+    // Sleeping is required to provide all async mmal-related systems to terminate.
+    usleep(1000000);
     FlashCamEGL::stop();
 #endif 
     

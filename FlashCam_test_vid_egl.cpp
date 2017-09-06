@@ -86,15 +86,15 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
     if (captured == 0) {
         fprintf(stdout, "..PROCESSING..\n");
         captured = 1;
-
+        
         fprintf(stdout, "frame (%d)\n", captured);
         GLuint result_texid = FlashCamEGL::createTexture(); eglcheck();
         
         FlashCamEGL::textureOES2rgb(texid, result_texid); eglcheck();
         glBindTexture(GL_TEXTURE_2D, result_texid); eglcheck();
-
+        
         fprintf(stdout, "Starting to read..\n");
-
+        
         glReadPixels(0, 0,
                      w, h,
                      GL_RGBA,
@@ -102,11 +102,10 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
                      Y.data);
         FlashCamEGL::eglDispError();
         eglcheck();
-
+        
         fprintf(stdout, "Texture read\n");
-
-        //captured = 1;
-        //memcpy(Y.data, &(frame[0]), w*h);
+        
+        //done processing
         captured = 2;
     } else {
         fprintf(stdout, "..BLOCK..\n");
@@ -190,7 +189,7 @@ int main(int argc, const char **argv) {
         FlashCam::get().stopCapture();   
         
         fprintf(stdout, "Awaiting key..\n");
-
+        
         //display image
         cv::imshow ("Y", Y);
         key = (char) cv::waitKey(0);   

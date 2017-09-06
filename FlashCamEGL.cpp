@@ -154,9 +154,6 @@ namespace FlashCamEGL {
     
     void stop() {      
         fprintf(stdout, "EGL:stopping..\n");
-
-        //wait for mmal to gracefully process any pending updates
-        usleep(1000000); //sleep 1s
         
         // STOP SIGNAL
         if (!FlashCamEGL::state.stop) {

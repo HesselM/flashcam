@@ -23,11 +23,106 @@ namespace FlashCamEGL {
     static FLASHCAM_EGL_t *state;
     
     
-    static GLuint progid;
+    static GLuint progid_oes2rgb;
     static GLuint vbufid;
     static GLuint fbufid;
     
     static std::vector<GLuint> textures;
+    
+    
+    // 2D vertex shader.    
+#define SRC_VSHADER_2D \
+"attribute vec2 position;\n" \
+"varying vec2 texcoord;\n" \
+"void main(void) {\n" \
+"   texcoord = position * vec2(0.5) + vec2(0.5);\n" \
+"   gl_Position = vec4(position, 0.0, 1.0);\n" \
+"}\n"
+    
+    // EGL_IMAGE_BRCM_MULTIMEDIA_Y is a one byte per pixel greyscale GL_LUMINANCE.
+    // TODO-OPTIMISATION: 4-grayscale pixels to 1-rgba pixel
+#define SRC_FSHADER_OES2RGB \
+"#extension GL_OES_EGL_image_external : require\n" \
+"uniform samplerExternalOES tex;\n" \
+"varying vec2 texcoord;\n" \
+"void main(void) {\n" \
+"    gl_FragColor = texture2D(tex, texcoord);\n" \
+"}\n"    
+    
+    //Source: http://www.nexcius.net/2012/11/20/how-to-load-a-glsl-shader-in-opengl-using-c/
+    GLuint loadShader(std::string v, std::string f) {        
+        GLuint vertShader = glCreateShader(GL_VERTEX_SHADER);
+        GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
+        
+        // Read shaders
+        const char *vertShaderSrc = v.c_str();
+        const char *fragShaderSrc = f.c_str();
+        
+        GLint result = GL_FALSE;
+        int logLength;
+        
+        // Compile vertex shader
+        std::cout << "Compiling vertex shader." << std::endl;
+        glShaderSource(vertShader, 1, &vertShaderSrc, NULL);
+        glCompileShader(vertShader);
+        
+        // Check vertex shader
+        glGetShaderiv(vertShader, GL_COMPILE_STATUS, &result);
+        glGetShaderiv(vertShader, GL_INFO_LOG_LENGTH, &logLength);
+        eglcheck();
+        
+        // Compile fragment shader
+        std::cout << "Compiling fragment shader." << std::endl;
+        glShaderSource(fragShader, 1, &fragShaderSrc, NULL);
+        glCompileShader(fragShader);
+        
+        // Check fragment shader
+        glGetShaderiv(fragShader, GL_COMPILE_STATUS, &result);
+        glGetShaderiv(fragShader, GL_INFO_LOG_LENGTH, &logLength);
+        eglcheck();
+        
+        std::cout << "Linking program" << std::endl;
+        GLuint program = glCreateProgram();
+        glAttachShader(program, vertShader);
+        glAttachShader(program, fragShader);
+        glLinkProgram(program);
+        
+        glGetProgramiv(program, GL_LINK_STATUS, &result);
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+        eglcheck();
+        
+        glDeleteShader(vertShader);
+        glDeleteShader(fragShader);
+        
+        return program;
+    }
+    
+    GLuint loadVertixBuffer() {
+        // Screen/framebuffer positions. As we use full screen, mapping to each corner of screen is used
+        static const GLfloat vertices[] = {
+            -1.0f, -1.0f,
+            1.0f, -1.0f,
+            -1.0f,  1.0f,
+            1.0f,  1.0f
+        };
+        
+        GLuint id;
+        glGenBuffers(1, &id); eglcheck();
+        glBindBuffer(GL_ARRAY_BUFFER, id); eglcheck();
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); eglcheck();    
+        return id;
+    }
+    
+    GLuint loadFrameBuffer() {
+        GLuint id;
+        glGenFramebuffers(1, &id); eglcheck();
+        glBindFramebuffer(GL_FRAMEBUFFER, id); eglcheck();
+        return id;
+    }
+    
+    
+    
+    
     
     void initOpenGL(FLASHCAM_EGL_t* state) {
         //copy state
@@ -117,9 +212,14 @@ namespace FlashCamEGL {
         //glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
         //glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         //eglcheck();
+        
+        //Load Shaders
+        //load program/buffers upon first call
+        FlashCamEGL::progid_oes2rgb = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
+        FlashCamEGL::vbufid         = loadVertixBuffer();   
+        FlashCamEGL::fbufid         = loadFrameBuffer();   
     }
 
-    
     void clearOpenGL() {
         std::cout << "Clear OpenGL." << std::endl;
 
@@ -137,6 +237,7 @@ namespace FlashCamEGL {
         //destroy buffers;
         glDeleteFramebuffers(1, &fbufid);
         glDeleteBuffers(1, &vbufid);
+        glDeleteProgram(progid_oes2rgb);
         
         //detroy openGL
         eglMakeCurrent(FlashCamEGL::state->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -184,113 +285,18 @@ namespace FlashCamEGL {
         
         
         // release and lock buffer of current EGLImage
-        if (FlashCamEGL::state->buffer_img)
-            mmal_buffer_header_release(FlashCamEGL::state->buffer_img);
-        FlashCamEGL::state->buffer_img = buffer;
+        //if (FlashCamEGL::state->buffer_img)
+        //    mmal_buffer_header_release(FlashCamEGL::state->buffer_img);
+        //FlashCamEGL::state->buffer_img = buffer;
     }
     
-    
-// 2D vertex shader.    
-#define SRC_OES2RGB_VSHADER \
-        "attribute vec2 position;\n" \
-        "varying vec2 texcoord;\n" \
-        "void main(void) {\n" \
-        "   texcoord = position * vec2(0.5) + vec2(0.5);\n" \
-        "   gl_Position = vec4(position, 0.0, 1.0);\n" \
-        "}\n"
 
-// EGL_IMAGE_BRCM_MULTIMEDIA_Y is a one byte per pixel greyscale GL_LUMINANCE.
-// TODO-OPTIMISATION: 4-grayscale pixels to 1-rgba pixel
-#define SRC_OES2RGB_FSHADER \
-        "#extension GL_OES_EGL_image_external : require\n" \
-        "uniform samplerExternalOES tex;\n" \
-        "varying vec2 texcoord;\n" \
-        "void main(void) {\n" \
-        "    gl_FragColor = texture2D(tex, texcoord);\n" \
-        "}\n"    
-    
-    //Source: http://www.nexcius.net/2012/11/20/how-to-load-a-glsl-shader-in-opengl-using-c/
-    GLuint loadShader(std::string v, std::string f) {        
-        GLuint vertShader = glCreateShader(GL_VERTEX_SHADER);
-        GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
-        
-        // Read shaders
-        const char *vertShaderSrc = v.c_str();
-        const char *fragShaderSrc = f.c_str();
-        
-        GLint result = GL_FALSE;
-        int logLength;
-        
-        // Compile vertex shader
-        std::cout << "Compiling vertex shader." << std::endl;
-        glShaderSource(vertShader, 1, &vertShaderSrc, NULL);
-        glCompileShader(vertShader);
-        
-        // Check vertex shader
-        glGetShaderiv(vertShader, GL_COMPILE_STATUS, &result);
-        glGetShaderiv(vertShader, GL_INFO_LOG_LENGTH, &logLength);
-        eglcheck();
-        
-        // Compile fragment shader
-        std::cout << "Compiling fragment shader." << std::endl;
-        glShaderSource(fragShader, 1, &fragShaderSrc, NULL);
-        glCompileShader(fragShader);
-        
-        // Check fragment shader
-        glGetShaderiv(fragShader, GL_COMPILE_STATUS, &result);
-        glGetShaderiv(fragShader, GL_INFO_LOG_LENGTH, &logLength);
-        eglcheck();
-        
-        std::cout << "Linking program" << std::endl;
-        GLuint program = glCreateProgram();
-        glAttachShader(program, vertShader);
-        glAttachShader(program, fragShader);
-        glLinkProgram(program);
-        
-        glGetProgramiv(program, GL_LINK_STATUS, &result);
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
-        eglcheck();
-        
-        glDeleteShader(vertShader);
-        glDeleteShader(fragShader);
-        
-        return program;
-    }
-    
-    GLuint loadVertixBuffer() {
-        // Screen/framebuffer positions. As we use full screen, mapping to each corner of screen is used
-        static const GLfloat vertices[] = {
-            -1.0f, -1.0f,
-             1.0f, -1.0f,
-            -1.0f,  1.0f,
-             1.0f,  1.0f
-        };
-        
-        GLuint id;
-        glGenBuffers(1, &id); eglcheck();
-        glBindBuffer(GL_ARRAY_BUFFER, id); eglcheck();
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); eglcheck();    
-        return id;
-    }
-    
-    GLuint loadFrameBuffer() {
-        GLuint id;
-        glGenFramebuffers(1, &id); eglcheck();
-        glBindFramebuffer(GL_FRAMEBUFFER, id); eglcheck();
-        return id;
-    }
-    
-    void textureOES2rgb(GLuint input_texid, GLuint result_texid) {
-        //load program/buffers upon first call
-        FlashCamEGL::progid = loadShader(SRC_OES2RGB_VSHADER, SRC_OES2RGB_FSHADER);   
-        FlashCamEGL::vbufid  = loadVertixBuffer();   
-        FlashCamEGL::fbufid  = loadFrameBuffer();   
-        
+    void textureOES2rgb(GLuint input_texid, GLuint result_texid) {        
         int width  = FlashCamEGL::state->userdata->settings->width;
         int height = FlashCamEGL::state->userdata->settings->height;
     
         //select proper progam
-        glUseProgram(FlashCamEGL::progid); eglcheck();        
+        glUseProgram(FlashCamEGL::progid_oes2rgb); eglcheck();        
         //Set framebuffer and render postitions
         glBindBuffer(GL_ARRAY_BUFFER, FlashCamEGL::vbufid); eglcheck();
         glBindFramebuffer(GL_FRAMEBUFFER, FlashCamEGL::fbufid); eglcheck();
@@ -304,12 +310,12 @@ namespace FlashCamEGL {
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, FlashCamEGL::state->texture); eglcheck();
         
         //Set render/shader-parameters
-        glUniform1i(glGetUniformLocation(FlashCamEGL::progid,"tex"), 0); //assign GL_TEXTURE0
-        glUniform2f(glGetUniformLocation(FlashCamEGL::progid,"texelsize"), 1.f/width, 1.f/height);
+        glUniform1i(glGetUniformLocation(FlashCamEGL::progid_oes2rgb,"tex"), 0); //assign GL_TEXTURE0
+        glUniform2f(glGetUniformLocation(FlashCamEGL::progid_oes2rgb,"texelsize"), 1.f/width, 1.f/height);
         eglcheck();
         
         //setup format of texture
-        GLuint pos = glGetAttribLocation(FlashCamEGL::progid,"position");
+        GLuint pos = glGetAttribLocation(FlashCamEGL::progid_oes2rgb,"position");
         // pos      : postion in texture
         // 2        : only x/y values (z/d is ignored)
         // GL_FLOAT : position is floating point
