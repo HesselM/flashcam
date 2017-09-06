@@ -24,6 +24,7 @@ namespace FlashCamEGL {
     
     static GLuint progid_oes2rgb;
     static GLuint progid_rgbblur;
+    static GLuint progid_rgbsobel;
     static GLuint vbufid;
     static GLuint fbufid;
     
@@ -69,6 +70,28 @@ namespace FlashCamEGL {
     "    gl_FragColor = clamp(col,vec4(0),vec4(1));\n" \
     "}\n"
     
+    //sobel shader
+#define SRC_FSHADER_RGBSOBEL \
+    "varying vec2 texcoord;\n" \
+    "uniform sampler2D tex;\n" \
+    "uniform vec2 texelsize;\n" \
+    "void main(void) {\n" \
+    "    vec4 tm1m1 = texture2D(tex,texcoord+vec2(-1,-1)*texelsize);\n" \
+    "    vec4 tm10  = texture2D(tex,texcoord+vec2(-1,0)*texelsize);\n" \
+    "    vec4 tm1p1 = texture2D(tex,texcoord+vec2(-1,1)*texelsize);\n" \
+    "    vec4 tp1m1 = texture2D(tex,texcoord+vec2(1,-1)*texelsize);\n" \
+    "    vec4 tp10  = texture2D(tex,texcoord+vec2(1,0)*texelsize);\n" \
+    "    vec4 tp1p1 = texture2D(tex,texcoord+vec2(1,1)*texelsize);\n" \
+    "    vec4 t0m1  = texture2D(tex,texcoord+vec2(0,-1)*texelsize);\n" \
+    "    vec4 t0p1  = texture2D(tex,texcoord+vec2(0,-1)*texelsize);\n" \
+    "    vec4 xdiff = -1.0*tm1m1 + -2.0*tm10 + -1.0*tm1p1 + 1.0*tp1m1 + 2.0*tp10 + 1.0*tp1p1;\n" \
+    "    vec4 ydiff = -1.0*tm1m1 + -2.0*t0m1 + -1.0*tp1m1 + 1.0*tm1p1 + 2.0*t0p1 + 1.0*tp1p1;\n" \
+    "    vec4 tot   = sqrt(xdiff*xdiff+ydiff*ydiff);\n" \
+    "    vec4 col   = tot;\n" \
+    "    col.a      = 1.0;\n" \
+    "    gl_FragColor = clamp(col,vec4(0),vec4(1));\n" \
+    "}\n"
+
     
     //Source: http://www.nexcius.net/2012/11/20/how-to-load-a-glsl-shader-in-opengl-using-c/
     GLuint loadShader(std::string v, std::string f) {        
@@ -232,8 +255,9 @@ namespace FlashCamEGL {
         
         //Load Shaders
         //load program/buffers upon first call
-        FlashCamEGL::progid_oes2rgb = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
-        FlashCamEGL::progid_rgbblur = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
+        FlashCamEGL::progid_oes2rgb  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
+        FlashCamEGL::progid_rgbblur  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
+        FlashCamEGL::progid_rgbsobel = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
 
         //setup buffers
         FlashCamEGL::vbufid         = loadVertixBuffer();   
@@ -259,6 +283,7 @@ namespace FlashCamEGL {
         glDeleteBuffers(1, &vbufid);
         glDeleteProgram(progid_oes2rgb);
         glDeleteProgram(progid_rgbblur);
+        glDeleteProgram(progid_rgbsobel);
         
         //detroy openGL
         eglMakeCurrent(FlashCamEGL::state->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -357,6 +382,10 @@ namespace FlashCamEGL {
     
     void textureRGBblur(GLuint input_texid, GLuint result_texid) {        
         texture2texture(input_texid, GL_TEXTURE_2D, result_texid, progid_rgbblur);    
+    }
+
+    void textureRGBsobel(GLuint input_texid, GLuint result_texid) {        
+        texture2texture(input_texid, GL_TEXTURE_2D, result_texid, progid_rgbsobel);    
     }
     
     GLuint createTexture() {

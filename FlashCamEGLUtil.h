@@ -68,7 +68,10 @@ namespace FlashCamEGL {
     
     //transform OES texture (=Lumiance only) to RGB
     void textureOES2rgb(GLuint input_texid, GLuint result_texid);
-    void textureRGBblur(GLuint input_texid, GLuint result_texid);      
+    void textureRGBblur(GLuint input_texid, GLuint result_texid);   
+    void textureRGBsobel(GLuint input_texid, GLuint result_texid);
+    //Apply-shader program to texture and fetch result as texture.
+    void texture2texture(GLuint input_texid, GLenum input_target,  GLuint result_texid, GLuint progid);   
 
     //generate new texture. Texture-ID is returned.
     GLuint createTexture();

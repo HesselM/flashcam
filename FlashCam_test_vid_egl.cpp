@@ -90,8 +90,9 @@
 static cv::Mat Y;
 static unsigned int captured;
 static bool stop;
-static GLuint texid_target;
-static bool useBlur;
+static GLuint texid_rgb;
+static GLuint texid_filtered;
+static unsigned int shader;
 
 void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
     //fprintf(stdout, "frame (id:%d %dx%d)\n", texid, w, h);
@@ -99,20 +100,32 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
     // copy frame to opencv-structure
     if (!stop) {        
         //have we a target texid?
-        if (texid_target == 0) {
-            fprintf(stdout, "init texture..\n");
-            texid_target = FlashCamEGL::createTexture(); eglcheck();
+        if (texid_rgb == 0) {
+            fprintf(stdout, "init rgb texture..\n");
+            texid_rgb = FlashCamEGL::createTexture(); eglcheck();
         }
         
         //Update target texture
-        FlashCamEGL::textureOES2rgb(texid, texid_target); eglcheck();
+        FlashCamEGL::textureOES2rgb(texid, texid_rgb); eglcheck();
         
-        //apply blur
-        if (useBlur) {
-            FlashCamEGL::textureRGBblur(texid_target, texid_target); eglcheck();
+        //apply shader?
+        if (shader > 0) {
+            
+            //have we a target texid?
+            if (texid_filtered == 0) {
+                fprintf(stdout, "init filtered texture..\n");
+                texid_filtered = FlashCamEGL::createTexture(); eglcheck();
+            }
+            
+            if (shader == 1)
+                FlashCamEGL::textureRGBblur(texid_rgb, texid_filtered); eglcheck();
+            if (shader == 2)
+                FlashCamEGL::textureRGBsobel(texid_rgb, texid_filtered); eglcheck();
+            
+            glBindTexture(GL_TEXTURE_2D, texid_filtered); eglcheck();
+        } else {
+            glBindTexture(GL_TEXTURE_2D, texid_rgb); eglcheck();            
         }
-        
-        glBindTexture(GL_TEXTURE_2D, texid_target); eglcheck();
         
         //Read pixels to OpenCV array.
         // Note that this is exremely inefficient, but it serves the purpose to demonstrate the functioning.
@@ -184,8 +197,9 @@ int main(int argc, const char **argv) {
     
     //init callback parameters
     stop            = false;
-    useBlur         = false;
-    texid_target    = 0;
+    shader          = 0;
+    texid_rgb       = 0;
+    texid_filtered  = 0;
     
     //stop capturing
     FlashCam::get().startCapture();   
@@ -199,8 +213,9 @@ int main(int argc, const char **argv) {
         
         
         //toggle blur
-        if (key == CHAR_T)
-            useBlur = !useBlur;
+        if (key == CHAR_T) {
+            shader = ++shader % 3;
+        }
     } 
     fprintf(stdout, "ESC-pressed\n");
 
