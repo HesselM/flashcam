@@ -558,9 +558,6 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
     int max_idx         = 0; //flag for detecting if _framebuffer is out of memory
     uint64_t presentationtime = 0;
     
-    //lock buffer --> callback is async!
-    mmal_buffer_header_mem_lock(buffer);
-    
     //retrieve userdata
     FLASHCAM_PORT_USERDATA_T *userdata = (FLASHCAM_PORT_USERDATA_T *)port->userdata;
           
@@ -598,6 +595,9 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                 // `normal` processing
             } else {
                     
+                //lock buffer --> callback is async!
+                mmal_buffer_header_mem_lock(buffer);
+                
                 // We are decoding YUV packages
                 // - 4/6 = Y
                 // - 1/6 = U
@@ -627,6 +627,9 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                     //update index
                     userdata->framebuffer_idx += length_Y;
                 }
+
+                //done with data..
+                mmal_buffer_header_mem_unlock(buffer);
             }
         }
         
@@ -645,7 +648,6 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
     }
 
     // release buffer back to the pool
-    mmal_buffer_header_mem_unlock(buffer);
     mmal_buffer_header_release(buffer);
     
     // and send one back to the port (if still open)

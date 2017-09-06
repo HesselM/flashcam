@@ -66,11 +66,13 @@ namespace FlashCamEGL {
             
             //wait for update
             vcos_semaphore_wait(&(state->userdata->sem_capture));
-//            fprintf(stdout, "----semaphore----\n");
-
+            
             // Do we need to continue or are we done?
             // --> as we are using countin-semaphores, only process a single buffer
-            if ((!state->stop) && ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)) {                
+            if ((!state->stop) && ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)) {      
+                
+                mmal_buffer_header_mem_lock(buffer);
+
                 // OPAQUE ==> TEXTURE
                 mmalbuf2TextureOES_internal(buffer);
                 
@@ -88,13 +90,18 @@ namespace FlashCamEGL {
                 }
             }
         }
+        
+        fprintf(stdout, "Worker: releasing..\n");
         // Make sure all buffers are returned on exit
         while ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)
-            mmal_buffer_header_release(buffer);        
+            mmal_buffer_header_release(buffer);   
+        fprintf(stdout, "Worker: releasing.. done\n");
     }
     
     
     int init() {
+        fprintf(stdout, "EGL:init..\n");
+
         //setup videocore-logging and semaphores
         bcm_host_init();
 
@@ -120,10 +127,18 @@ namespace FlashCamEGL {
         FlashCamEGL::state.port     = port;
         FlashCamEGL::state.userdata = userdata;
         FlashCamEGL::state.img      = EGL_NO_IMAGE_KHR;
-        
-        fprintf(stdout, "- starting worker..\n");
+                        
+        //clear queue..
+        fprintf(stdout, "- resetting queue..\n");
+        while (mmal_queue_get(FlashCamEGL::state.userdata->opengl_queue) != NULL);                
 
+        //reset semaphore
+        fprintf(stdout, "- resetting semaphore..\n");
+        while (vcos_semaphore_trywait(&(FlashCamEGL::state.userdata->sem_capture)) != VCOS_EAGAIN);
+        
+        
         //start worker thread
+        fprintf(stdout, "- starting worker..\n");
         status = vcos_thread_create(&(FlashCamEGL::state.worker_thread), "FlashCamEGL-worker", NULL, FlashCamEGL::worker, &(FlashCamEGL::state));
         if (status != VCOS_SUCCESS)
             vcos_log_error("%s: Failed to start `FlashCamEGL-worker` (%d)", VCOS_FUNCTION, status);
@@ -140,6 +155,9 @@ namespace FlashCamEGL {
     void stop() {      
         fprintf(stdout, "EGL:stopping..\n");
 
+        //wait for mmal to gracefully process any pending updates
+        usleep(1000000); //sleep 1s
+        
         // STOP SIGNAL
         if (!FlashCamEGL::state.stop) {
             //vcos_log_trace("Stopping GL preview");
@@ -163,7 +181,8 @@ namespace FlashCamEGL {
     }
         
     void destroy() {
-        
+        fprintf(stdout, "EGL:destroying..\n");
+
         //vcos_semaphore_delete(&(FlashCamEGL::sem_captyr));
     }    
 }

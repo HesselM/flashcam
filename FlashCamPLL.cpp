@@ -549,10 +549,11 @@ int FlashCamPLL::stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params 
     //reset fps
     params->framerate = _pllparams.framerate;
     //reset active-flag
+    // --> stops PLL-callback from processing new MMAL updates
     settings->pll_enabled = false;
     _active = false;
     
-    //wait for mmal to gracefully process any pending updates
+    //wait for callback to process current update
     usleep(1000000); //sleep 1s
     
     if ( settings->verbose )
