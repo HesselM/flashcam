@@ -197,8 +197,8 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         float I = _pllparams.I;
         float D = _pllparams.D;
 #else
-        //tuning reshults at 30Hz
-        float P = 7.0f;
+        //tuning reshults at 30Hz (p=7)
+        float P = 0.233 * _pllparams.framerate;
         float I = 0.0f;
         float D = 0.0f;
 #endif
@@ -250,6 +250,8 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         _pllparams.error_idx_sample         = (_pllparams.error_idx_sample + 1) % FLASHCAM_PLL_SAMPLES;
         _pllparams.last_error               = error;
         _pllparams.last_error_us            = error_us;
+
+        fprintf(stdout, "%s: PLL error %" PRId64 " \n", __func__, error_us);
 
 // FPS UPDATE
 

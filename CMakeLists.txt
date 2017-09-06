@@ -33,7 +33,7 @@ include_directories( ${BCMHOST_INCLUDE_DIRS} )
 link_directories( ${BCMHOST_LIBRARY_DIRS} )
 
 #EGL -> optional
-if (FRAMECAPTUREEGL)
+if (FRAMECAPTUREEGL OR VIDTESTEGL)
     pkg_search_module(EGL REQUIRED egl)
     include_directories(${EGL_INCLUDE_DIRS})
     link_directories(${EGL_LIBRARY_DIRS} )
@@ -101,7 +101,7 @@ target_link_libraries(flashcam ${MMAL_LIBRARIES})
 target_link_libraries(flashcam ${BCMHOST_LIBRARIES})
 target_link_libraries(flashcam m)
 
-if (FRAMECAPTUREEGL)
+if (FRAMECAPTUREEGL OR VIDTESTEGL)
     target_link_libraries(flashcam ${EGL_LIBRARIES})
 endif()
 

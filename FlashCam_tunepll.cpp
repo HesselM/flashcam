@@ -78,7 +78,7 @@
 // microseconds - shutterspeed of imager
 #define SHUTTERSPEED 15000
 // Hz - framerate of imager
-#define FRAMERATE    30.0f
+#define FRAMERATE    1.0f
 // 1/0 - Do we use PLL?
 #define USEPLL        1
 // What frequency? (FRAMERATE / PLLDIVIDER = PLLFREQUENCY)
@@ -514,7 +514,7 @@ int main(int argc, const char **argv) {
     }
 
     if (active) {
-        active = false
+        active = false;
         FlashCam::get().stopCapture();   
     }
     

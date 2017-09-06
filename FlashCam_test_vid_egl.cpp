@@ -67,10 +67,20 @@
 // 0-7
 #define SENSORMODE   5
 // Pixels
-#define FRAME_WIDTH  1640
-#define FRAME_HEIGHT 922
+//#define FRAME_WIDTH  1640
+//#define FRAME_HEIGHT 922
+
+//#define FRAME_WIDTH  820
+//#define FRAME_HEIGHT 461
+
+#define FRAME_WIDTH  410
+#define FRAME_HEIGHT 230
+
+
 // microseconds
 #define SHUTTERSPEED 15000
+// hz - framerate of camera
+#define FRAMERATE 1
 
 //used keys
 #define CHAR_ESC 27
@@ -78,35 +88,31 @@
 
 static cv::Mat Y;
 static unsigned int captured;
+static bool stop;
+static GLuint texid_target;
 
 void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
-    fprintf(stdout, "frame (id:%d %dx%d)\n", texid, w, h);
+    //fprintf(stdout, "frame (id:%d %dx%d)\n", texid, w, h);
     
     // copy frame to opencv-structure
-    if (captured == 0) {
-        fprintf(stdout, "..PROCESSING..\n");
-        captured = 1;
+    if (!stop) {        
+        //have we a target texid?
+        if (texid_target == 0) {
+            fprintf(stdout, "init texture..\n");
+            texid_target = FlashCamEGL::createTexture(); eglcheck();
+        }
         
-        fprintf(stdout, "frame (%d)\n", captured);
-        GLuint result_texid = FlashCamEGL::createTexture(); eglcheck();
+        //Update target texture
+        FlashCamEGL::textureOES2rgb(texid, texid_target); eglcheck();
+        glBindTexture(GL_TEXTURE_2D, texid_target); eglcheck();
         
-        FlashCamEGL::textureOES2rgb(texid, result_texid); eglcheck();
-        glBindTexture(GL_TEXTURE_2D, result_texid); eglcheck();
-        
-        fprintf(stdout, "Starting to read..\n");
-        
-        glReadPixels(0, 0,
-                     w, h,
-                     GL_RGBA,
-                     GL_UNSIGNED_BYTE,
-                     Y.data);
+        //Read pixels to OpenCV array.
+        // Note that this is exremely inefficient, but it serves the purpose to demonstrate the functioning.
+        glReadPixels(0, 0, w, h,  GL_RGBA, GL_UNSIGNED_BYTE, Y.data);
         FlashCamEGL::eglDispError();
         eglcheck();
         
-        fprintf(stdout, "Texture read\n");
-        
-        //done processing
-        captured = 2;
+        fprintf(stdout, "..PROCESSED..\n");        
     } else {
         fprintf(stdout, "..BLOCK..\n");
     }
@@ -114,10 +120,8 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
 
 
 int main(int argc, const char **argv) {
-    fprintf(stdout, "\n -- FRAMECAPTURE OpenGL -- \n\n");
+    fprintf(stdout, "\n -- VIDEO OpenGL -- \n\n");
     fprintf(stdout, "ESC  : stop\n");
-    fprintf(stdout, "ENTER: next frame\n");
-    fprintf(stdout, "P    : write frame to file\n");
     fprintf(stdout, " ------------------ \n");
     
     //get default params & settings
@@ -147,11 +151,12 @@ int main(int argc, const char **argv) {
     FlashCam::get().setExposureMode(MMAL_PARAM_EXPOSUREMODE_SPORTS);
     FlashCam::get().setShutterSpeed(SHUTTERSPEED);
     FlashCam::get().setRotation(0);
-    FlashCam::get().setFrameRate(1);        //1 Hz
+    FlashCam::get().setFrameRate(FRAMERATE);        //1 Hz
     
     //PLL parameters
-    FlashCam::get().setPLLDivider(1);       //every frame
-    FlashCam::get().setPLLPulseWidth(1000); //1000ms = 100% dutycycle @ 1Hz
+    FlashCam::get().setPLLEnabled(1);
+    FlashCam::get().setPLLDivider(2);       //every other frame
+    FlashCam::get().setPLLPulseWidth(10*FRAMERATE);  //50% dutycycle @ 1Hz
     FlashCam::get().setPLLOffset(0);        //no offset
     
     //get & print params
@@ -167,45 +172,27 @@ int main(int argc, const char **argv) {
     cv::namedWindow( "Y", cv::WINDOW_NORMAL );
     
     //intit
-    char key = 0;
-    captured = 0; //0=capturing, 1=captured, 2=copied data to memory
+    char key    = 0;
     
-    //variable to store frame to file
-    char filename[20];
-    unsigned int frameid = 0;
-    unsigned int toggle = 0;
+    //init callback parameters
+    stop            = false;
+    texid_target    = 0;
     
+    //stop capturing
+    FlashCam::get().startCapture();   
+
     //continue while capturing isn't the ESC-key
     while (key != CHAR_ESC) {
-        //start stream image
-        FlashCam::get().setPLLEnabled(1);
-        FlashCam::get().startCapture();   
-        
-        //wait until captured
-        while (captured != 2)
-            usleep(100000); //sleep 100ms
-        
-        //stop capturing
-        FlashCam::get().stopCapture();   
-        
-        fprintf(stdout, "Awaiting key..\n");
-        
-        //display image
+        //display image        
         cv::imshow ("Y", Y);
-        key = (char) cv::waitKey(0);   
-        fprintf(stdout, "Key pressed: %c\n", key);
-        
-        //write to file?
-        if (key == CHAR_P) {
-            sprintf(filename, "frame-%d.jpg", frameid);
-            imwrite(filename, Y);
-            fprintf(stdout, "Written frame: %s\n", filename);
-            frameid++;
-        }
-        
-        //reset capture
+        key = (char) cv::waitKey(1000);   
         captured = 0;
     } 
-    
+    fprintf(stdout, "ESC-pressed\n");
+
+    //stop capturing
+    stop        = true;
+    FlashCam::get().stopCapture();   
+
     return 0;
 }
