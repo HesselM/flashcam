@@ -117,7 +117,7 @@ static double time_sum;
 static int frames;
 
 //FlashCam settings&parameters
-static FLASHCAM_INTERNAL_STATE_T *pllparams; //pointer to PLL internal parameters
+static FLASHCAM_INTERNAL_STATE_T *state; //pointer to PLL internal parameters
 static FLASHCAM_SETTINGS_T     settings; //copy of settings structure
 
 //Looptest params
@@ -154,12 +154,12 @@ void initScreen() {
 void printScreen() {     
 #ifdef STEPRESPONSE
     printf( TPOS( 7,1) " Frequency                                  " TCL);
-    printf( TPOS( 8,1) "  - PWM               : %11.5f Hz           " TCL, 1000000.0f / pllparams->pwm_period );
-    printf( TPOS( 9,1) "  - Camera Target     : %11.5f Hz           " TCL, pllparams->steps[pllparams->step_idx]);
+    printf( TPOS( 8,1) "  - PWM               : %11.5f Hz           " TCL, 1000000.0f / state->pll_pwm_period );
+    printf( TPOS( 9,1) "  - Camera Target     : %11.5f Hz           " TCL, state->pll_steps[state->pll_step_idx]);
     printf( TPOS(10,1) "  - CPU Measured      : %11.5f Hz           " TCL, frames/time_sum);
-    printf( TPOS(11,1) " Frame-next           : %11d                " TCL, pllparams->frames_next);
-    printf( TPOS(12,1) " Frame-idx            : %11d                " TCL, pllparams->frames);
-    printf( TPOS(13,1) " PWM interval         : %11" PRId64 " us    " TCL, pllparams->startinterval_gpu);
+    printf( TPOS(11,1) " Frame-next           : %11d                " TCL, state->pll_frames_next);
+    printf( TPOS(12,1) " Frame-idx            : %11d                " TCL, state->pll_frames);
+    printf( TPOS(13,1) " PWM interval         : %11" PRId64 " us    " TCL, state->pll_startinterval_gpu);
     printf( TPOS(14,1) " Sensor Mode          : %11d                " TCL, SENSORMODE);
     printf( TPOS(15,1) " Width x Height       : %4d x %4d Pixels    " TCL, settings.width, settings.height);
     printf( TPOS(16,1) " Logfile              : %s                  " TCL, looptest_logname.c_str());
@@ -169,22 +169,22 @@ void printScreen() {
     printf( TPOS( 8,1) " o = I+      k = I-\n          " TCL);
     printf( TPOS( 9,1) " p = D+      l = D-\n          " TCL);
     printf( TPOS(10,1) "-------------------------------" TCL);
-    printf( TPOS(11,1) " P: %06.2f   I: %08.4f   D: %06.2f          " TCL, pllparams->P, pllparams->I, pllparams->D);
+    printf( TPOS(11,1) " P: %06.2f   I: %08.4f   D: %06.2f          " TCL, state->P, state->I, state->D);
     printf( TPOS(12,1) "-------------------------------             " TCL);
     printf( TPOS(13,1) " Error                                      " TCL);
-    printf( TPOS(14,1) "  - Percentual        : %11.5f %%           " TCL, 100 * pllparams->last_error);
-    printf( TPOS(15,1) "  - Absolute          : %11" PRId64 " us    " TCL, pllparams->last_error_us);
-    printf( TPOS(16,1) "  - jitter (=avg)     : %11.5f us (%d)      " TCL, pllparams->error_sum             / FLASHCAM_PLL_JITTER , FLASHCAM_PLL_JITTER);
-    printf( TPOS(17,1) "  - dt(jitter)        : %11.5f us (%d)      " TCL, pllparams->error_avg_dt_sum      / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
-    printf( TPOS(18,1) "  - avg(dt(jitter))   : %11.5f us (%d)      " TCL, pllparams->error_avg_dt_avg_sum  / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
-    printf( TPOS(19,1) "  - std(jitter)       : %11.5f us (%d)      " TCL, pllparams->error_avg_std_sum     / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
-    printf( TPOS(20,1) "  - Integral          : %11.5f us           " TCL, pllparams->integral);
+    printf( TPOS(14,1) "  - Percentual        : %11.5f %%           " TCL, 100 * state->pll_last_error);
+    printf( TPOS(15,1) "  - Absolute          : %11" PRId64 " us    " TCL, state->pll_last_error_us);
+    printf( TPOS(16,1) "  - jitter (=avg)     : %11.5f us (%d)      " TCL, state->pll_error_sum             / FLASHCAM_PLL_JITTER , FLASHCAM_PLL_JITTER);
+    printf( TPOS(17,1) "  - dt(jitter)        : %11.5f us (%d)      " TCL, state->pll_error_avg_dt_sum      / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
+    printf( TPOS(18,1) "  - avg(dt(jitter))   : %11.5f us (%d)      " TCL, state->pll_error_avg_dt_avg_sum  / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
+    printf( TPOS(19,1) "  - std(jitter)       : %11.5f us (%d)      " TCL, state->pll_error_avg_std_sum     / FLASHCAM_PLL_SAMPLES, FLASHCAM_PLL_SAMPLES);
+    printf( TPOS(20,1) "  - Integral          : %11.5f us           " TCL, state->pll_integral);
     printf( TPOS(21,1) " Frequency                                  " TCL);
-    printf( TPOS(22,1) "  - PWM               : %11.5f Hz           " TCL, 1000000.0f / pllparams->pwm_period );
-    printf( TPOS(23,1) "  - Camera Target     : %11.5f Hz           " TCL, pllparams->framerate);
-    printf( TPOS(24,1) "  - PID proposed      : %11.5f Hz           " TCL, pllparams->pid_framerate);
+    printf( TPOS(22,1) "  - PWM               : %11.5f Hz           " TCL, 1000000.0f / state->pll_pwm_period );
+    printf( TPOS(23,1) "  - Camera Target     : %11.5f Hz           " TCL, state->pll_framerate);
+    printf( TPOS(24,1) "  - PID proposed      : %11.5f Hz           " TCL, state->pll_pid_framerate);
     printf( TPOS(25,1) "  - CPU Measured      : %11.5f Hz           " TCL, frames/time_sum);
-    printf( TPOS(26,1) " PWM interval         : %11" PRId64 " us    " TCL, pllparams->startinterval_gpu);
+    printf( TPOS(26,1) " PWM interval         : %11" PRId64 " us    " TCL, state->pll_startinterval_gpu);
     printf( TPOS(27,1) " Sensor Mode          : %11d                " TCL, SENSORMODE);
     printf( TPOS(28,1) " Width x Height       : %4d x %4d Pixels    " TCL, settings.width, settings.height);
     printf( TPOS(29,1) " Looptest                                   " TCL);
@@ -207,9 +207,9 @@ void logData(bool header) {
     } else {   
         looptest_logfile << "" << frames;
         looptest_logfile << "," << time_sum;
-        looptest_logfile << "," << pllparams->last_frametime_gpu;
-        looptest_logfile << "," << pllparams->startinterval_gpu;
-        looptest_logfile << "," << pllparams->steps[pllparams->step_idx];
+        looptest_logfile << "," << state->pll_last_frametime_gpu;
+        looptest_logfile << "," << state->pll_startinterval_gpu;
+        looptest_logfile << "," << state->pll_steps[state->pll_step_idx];
         looptest_logfile << "," << (frames/time_sum);
         looptest_logfile << "\n";
     }        
@@ -233,16 +233,16 @@ void logData(bool header) {
         looptest_logfile << ""  << looptest_iteration;
         looptest_logfile << "," << frames;
         looptest_logfile << "," << time_sum;
-        looptest_logfile << "," << pllparams->P;
-        looptest_logfile << "," << pllparams->startinterval_gpu;
-        looptest_logfile << "," << pllparams->pid_framerate;
+        looptest_logfile << "," << state->P;
+        looptest_logfile << "," << state->pll_startinterval_gpu;
+        looptest_logfile << "," << state->pll_pid_framerate;
         looptest_logfile << "," << (frames/time_sum);
-        looptest_logfile << "," << pllparams->last_error;
-        looptest_logfile << "," << pllparams->last_error_us;
-        looptest_logfile << "," << (pllparams->error_sum            / FLASHCAM_PLL_JITTER);
-        looptest_logfile << "," << (pllparams->error_avg_dt_sum     / FLASHCAM_PLL_SAMPLES);
-        looptest_logfile << "," << (pllparams->error_avg_dt_avg_sum / FLASHCAM_PLL_SAMPLES);
-        looptest_logfile << "," << (pllparams->error_avg_std_sum    / FLASHCAM_PLL_SAMPLES);
+        looptest_logfile << "," << state->pll_last_error;
+        looptest_logfile << "," << state->pll_last_error_us;
+        looptest_logfile << "," << (state->pll_error_sum            / FLASHCAM_PLL_JITTER);
+        looptest_logfile << "," << (state->pll_error_avg_dt_sum     / FLASHCAM_PLL_SAMPLES);
+        looptest_logfile << "," << (state->pll_error_avg_dt_avg_sum / FLASHCAM_PLL_SAMPLES);
+        looptest_logfile << "," << (state->pll_error_avg_std_sum    / FLASHCAM_PLL_SAMPLES);
         looptest_logfile << " \n";
     }
 #endif
@@ -286,9 +286,9 @@ void updateLogName() {
 #else
     looptest_logname_stream.str("");
     looptest_logname_stream.clear();
-    looptest_logname_stream << "P" << std::fixed << std::setprecision(2) << pllparams->P;
-    looptest_logname_stream << "I" << std::fixed << std::setprecision(2) << pllparams->I;
-    looptest_logname_stream << "D" << std::fixed << std::setprecision(2) << pllparams->D;
+    looptest_logname_stream << "P" << std::fixed << std::setprecision(2) << state->P;
+    looptest_logname_stream << "I" << std::fixed << std::setprecision(2) << state->I;
+    looptest_logname_stream << "D" << std::fixed << std::setprecision(2) << state->D;
     looptest_logname_stream << ".csv";
     looptest_logname = looptest_logname_stream.str();
 #endif
@@ -334,7 +334,7 @@ void initFlashCam() {
     //FlashCam::printSettings( &settings ); 
 
     //retrieve PLL internal parameters
-    FlashCam::get().getPLLParams(&pllparams);
+    FlashCam::get().getInternalState(&state);
 }
 
 
@@ -342,9 +342,9 @@ void resetFlashCam() {
     float P,I,D;
     
     if (active) {
-        P = pllparams->P;
-        I = pllparams->I;
-        D = pllparams->D;
+        P = state->P;
+        I = state->I;
+        D = state->D;
         FlashCam::get().stopCapture();
         
         //reset singleton
@@ -352,9 +352,9 @@ void resetFlashCam() {
         initFlashCam();
 
         //reset PID
-        pllparams->P = P;
-        pllparams->I = I;
-        pllparams->D = D;
+        state->P = P;
+        state->I = I;
+        state->D = D;
     }
     
     //reset parameters
@@ -365,12 +365,12 @@ void resetFlashCam() {
     
 #ifdef STEPRESPONSE
     //reset intervals
-    pllparams->step_idx    = 0;
-    pllparams->frames      = 0;
+    state->pll_step_idx    = 0;
+    state->pll_frames      = 0;
     //set parameters
-    pllparams->frames_next = FRAMERATE;
-    pllparams->steps[0]    = FRAMERATE;
-    pllparams->steps[1]    = FRAMERATE+2;
+    state->pll_frames_next = FRAMERATE;
+    state->pll_steps[0]    = FRAMERATE;
+    state->pll_steps[1]    = FRAMERATE+2;
 #endif
 }
 
@@ -419,27 +419,27 @@ int main(int argc, const char **argv) {
 #ifndef STEPRESPONSE
                 case CHAR_I: //i
                     if (!active_looptest)
-                        pllparams->P += 0.1;
+                        state->P += 0.1;
                     break;
                 case CHAR_J: //j 
                     if (!active_looptest)
-                        pllparams->P -= 0.1;
+                        state->P -= 0.1;
                     break;
                 case CHAR_O: //o
                     if (!active_looptest)
-                        pllparams->I += 0.0001;
+                        state->I += 0.0001;
                     break;
                 case CHAR_K: //k
                     if (!active_looptest)
-                        pllparams->I -= 0.0001;
+                        state->I -= 0.0001;
                     break;
                 case CHAR_P: //p
                     if (!active_looptest)
-                        pllparams->D += 0.1;
+                        state->D += 0.1;
                     break;
                 case CHAR_L: //l
                     if (!active_looptest)
-                        pllparams->D -= 0.1;
+                        state->D -= 0.1;
                     break;
                 case CHAR_T: //start test
                     resetFlashCam();
@@ -490,8 +490,8 @@ int main(int argc, const char **argv) {
 
 #ifdef LOOPTEST_P
                 // Do we start new iteration with new P-value?
-                pllparams->P += LOOPTEST_P_STEP;
-                if (pllparams->P <= LOOPTEST_P_MAX) {
+                state->P += LOOPTEST_P_STEP;
+                if (state->P <= LOOPTEST_P_MAX) {
                     //new logfile name
                     updateLogName();
                     //new logfile + print header

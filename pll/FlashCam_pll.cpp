@@ -724,7 +724,8 @@ int FlashCam::getPLLFPSReducerEnabled( unsigned int *enabled ) {
     return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
-void FlashCam::getPLLParams( FLASHCAM_INTERNAL_STATE_T **pllparams) {
+
+//void FlashCam::getPLLParams( FLASHCAM_INTERNAL_STATE_T **pllparams) {
     /*
 #ifdef PLLTUNE
     *pllparams = &FlashCamPLL::_state;
@@ -732,4 +733,4 @@ void FlashCam::getPLLParams( FLASHCAM_INTERNAL_STATE_T **pllparams) {
     memcpy(pllparams, &FlashCamPLL::_state, sizeof(FLASHCAM_INTERNAL_STATE_T));
 #endif
     */
-}
+//}

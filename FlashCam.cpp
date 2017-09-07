@@ -883,9 +883,11 @@ void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
 }
 
 #ifdef PLLTUNE
-FLASHCAM_SETTINGS_T* FlashCam::settings() {
-    return &_settings;
+#ifdef PLLTUNE
+void FlashCam::getInternalState( FLASHCAM_INTERNAL_STATE_T** state ) {
+    *state = &_state;
 }
+#endif
 #endif
 
 int FlashCam::setSettings(FLASHCAM_SETTINGS_T *settings) {

@@ -166,10 +166,10 @@ public:
     int getPLLFPSReducerEnabled( unsigned int *enabledv);
     //get copy of PLL parameters
     // When `PLLTUNE` is defined, this function returns a pointer to the internal structure, otherwise it returns a deep-copy.
-    void getPLLParams( FLASHCAM_INTERNAL_STATE_T** );
+    //void getPLLParams( FLASHCAM_INTERNAL_STATE_T** );
 
 #ifdef PLLTUNE
-    FLASHCAM_SETTINGS_T* settings();
+    void getInternalState( FLASHCAM_INTERNAL_STATE_T** state);
 #endif
     
     /*
