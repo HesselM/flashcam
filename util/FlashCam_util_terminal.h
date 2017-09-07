@@ -39,8 +39,8 @@
 // Functions to adjust terminal/shell behaviour
 //
 
-#ifndef terminal_h
-#define terminal_h
+#ifndef FlashCam_util_terminal_h
+#define FlashCam_util_terminal_h
 
 #include <stdio.h>
 
@@ -74,4 +74,4 @@ void terminal_enableBuffer( int fd, int enable );
 
 
 
-#endif /* terminal_h */
+#endif /* FlashCam_util_terminal_h */

@@ -39,7 +39,7 @@
 // Functions to adjust terminal/shell behaviour
 //
 
-#include "terminal.h"
+#include "FlashCam_util_terminal.h"
 
 #include <termios.h>
 #include <fcntl.h>

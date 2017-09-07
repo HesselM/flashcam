@@ -54,7 +54,7 @@
 
 
 #include "FlashCam.h"
-#include "terminal.h"
+#include "FlashCam_util_terminal.h"
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
