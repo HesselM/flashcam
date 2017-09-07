@@ -77,10 +77,10 @@
 // NOTE: should be <= FPSREDUCER_MEASUREMENTS and >= 2
 #define FPSREDUCER_MAX_DELAYED 12
 // state-trackers
-static unsigned int  fpsreducer_idx;
-static unsigned int  fpsreducer_sum;
-static unsigned char fpsreducer_arr[FPSREDUCER_MEASUREMENTS];
-static uint64_t      fpsreducer_prev;
+//static unsigned int  fpsreducer_idx;
+//static unsigned int  fpsreducer_sum;
+//static unsigned char fpsreducer_arr[FPSREDUCER_MEASUREMENTS];
+//static uint64_t      fpsreducer_prev;
 
 
 
@@ -431,11 +431,11 @@ namespace FlashCamPLL {
             resetGPIO();
             
             //reset FPS-tracker
-            for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
-                fpsreducer_arr[i] = 0;
-            fpsreducer_idx   = 0;
-            fpsreducer_sum   = 0;
-            fpsreducer_prev  = 0;
+            //for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
+            //    fpsreducer_arr[i] = 0;
+            //fpsreducer_idx   = 0;
+            //fpsreducer_sum   = 0;
+            //fpsreducer_prev  = 0;
             
             //reset PLL-paramaters
             clearPLLstate();
@@ -723,14 +723,3 @@ int FlashCam::getPLLFPSReducerEnabled( unsigned int *enabled ) {
     *enabled = _settings.pll_fpsreducer_enabled;
     return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
-
-
-//void FlashCam::getPLLParams( FLASHCAM_INTERNAL_STATE_T **pllparams) {
-    /*
-#ifdef PLLTUNE
-    *pllparams = &FlashCamPLL::_state;
-#else
-    memcpy(pllparams, &FlashCamPLL::_state, sizeof(FLASHCAM_INTERNAL_STATE_T));
-#endif
-    */
-//}

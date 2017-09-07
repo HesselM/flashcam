@@ -2,6 +2,18 @@
 C++ Library for the PiCamera. Can be used for both video capturing and stills. 
 With a 320x240 resolution, video mode is able to reach 120fps on a RPi Zero Wireless.
 
+
+#September 2017
+Library is work in progress, hence this readme is outdated. Currently functional:
+- Single frame capturing (capture mode): callback to user defined function with full
+- Continous frame capturing (video mode): callback to user defined function per frame.
+- Phase Locked Loop (PLL): synchronised Hardware PWM with exposure time of camera. With proper tuning exposure and PWM signal can be synced within 60 microseconds. Only works in video mode. 
+- OpenGL rendering: Captured frame is not pushed to CPU domain, but stays in GPU, allowing efficient application of OpenGL shaders.  
+
+Pleas see the `CmakeLists` and `tests` directory for examples and available tests.
+
+
+# OLD README:
 In progress: addition of flash in both Capture (working) and Video (todo) mode.
 
 Based on:
