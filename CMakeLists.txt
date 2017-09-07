@@ -113,7 +113,7 @@ elseif (TEST_PLL_STEPRESPONSE AND WIRINGPI_FOUND)
     add_definitions( -DPLLTUNE )
     add_definitions( -DSTEPRESPONSE )
     set(FLASHCAM_SOURCES tests/FlashCam_test_pll_tune.cpp; util/FlashCam_util_terminal.cpp; ${FLASHCAM_SOURCES})
-    message(">> Building for PLL strepresponse recording. (TEST_PLL_STEPRESPONSE=ON)")
+    message(">> Building for PLL stepresponse recording. (TEST_PLL_STEPRESPONSE=ON)")
 
 endif()
 
@@ -137,14 +137,33 @@ if (WIRINGPI_FOUND)
 endif()
 
 # Print output.
-set( PRETTY_CMAKE_CXX_FLAGS "\t${CMAKE_CXX_FLAGS}")
-string(REPLACE " -" "\n\t-" PRETTY_CMAKE_CXX_FLAGS ${PRETTY_CMAKE_CXX_FLAGS})
-set( PRETTY_CMAKE_C_FLAGS "\t${CMAKE_C_FLAGS}")
-string(REPLACE " -" "\n\t-" PRETTY_CMAKE_C_FLAGS ${PRETTY_CMAKE_C_FLAGS})
+function(removeDuplicateSubstring stringIn stringOut)
+    separate_arguments(stringIn)
+    list(REMOVE_DUPLICATES stringIn)
+    string(REPLACE ";" " " stringIn "${stringIn}")
+    set(${stringOut} "${stringIn}" PARENT_SCOPE)
+endfunction()
 
+#remove duplicates
+string(REPLACE "-isystem /" "-isystem-/" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+string(REPLACE "-isystem /" "-isystem-/" CMAKE_C_FLAGS   ${CMAKE_C_FLAGS})
+removeDuplicateSubstring(${CMAKE_CXX_FLAGS} CMAKE_CXX_FLAGS)
+removeDuplicateSubstring(${CMAKE_C_FLAGS}   CMAKE_C_FLAGS)
+string(REPLACE "-isystem-/" "-isystem /" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+string(REPLACE "-isystem-/" "-isystem /" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+
+#make it pretty
+string(REPLACE " -" "\n\t-" PRETTY_CMAKE_CXX_FLAGS "\t${CMAKE_CXX_FLAGS}")
+string(REPLACE " -" "\n\t-" PRETTY_CMAKE_C_FLAGS "\t${CMAKE_C_FLAGS}")
+
+list( SORT FLASHCAM_SOURCES)
+string(REPLACE ";"  "\n\t- " PRETTY_FLASHCAM_SOURCES "\t- ${FLASHCAM_SOURCES}")
+
+#show result
 message(">> Used CXX flags: \n ${PRETTY_CMAKE_CXX_FLAGS}")
-message(">> Used C flags: \n${PRETTY_CMAKE_C_FLAGS}")
-message(">> Source List: \n${FLASHCAM_SOURCES}")
+message(">> Used C flags: \n ${PRETTY_CMAKE_C_FLAGS}")
+message(">> Source List: \n ${PRETTY_FLASHCAM_SOURCES}")
+
 
 
 # list(REMOVE_DUPLICATES <list>
