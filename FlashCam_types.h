@@ -171,19 +171,89 @@ typedef struct {
 
 
 
-class Status
-{
-private:
+
+
+
+
+
+
+
+
+
+//Number of samples for the array's for error estimations
+#define FLASHCAM_PLL_JITTER 5
+#define FLASHCAM_PLL_SAMPLES 10
+
+//Stepresone..
+#define FLASHCAM_PLL_STEPRESPONSE_STEPS     2
+
+
+/*
+ * FLASHCAM_INTERNAL_STATE_T
+ * PLL results and test data. Only user for intern-tracking
+ */
+typedef struct { 
     
-public:
-    /**
-     * Convert a MMAL status return value to a simple boolean of success
-     * ALso displays a fault if code is not success
-     *
-     * @param status The error code to convert
-     * @return 0 if status is success, 1 otherwise
-     */
-    static int mmal_to_int(MMAL_STATUS_T status);
-};
+#ifdef BUILD_FLASHCAM_WITH_PLL  
+    //timing
+    float framerate;                        // User set target framerate of camera.
+    float pwm_period;                       // Period of the set PWM signal in microseconds. 
+    uint64_t starttime_gpu;                 // Starttime of PWM-pulse in microseconds (us), determined by the GPU-clock
+    uint64_t startinterval_gpu;             // Accuracy of starttime: starttime \in [starttime, startime+interval]
+    
+    // state:timing
+    uint64_t    last_frametime_gpu;         // Last recorded timestamp of frame.
+    uint64_t    locktime;                   // Timestamp at which PLL was locked.
+    float       pid_framerate;              // Framerate proposed by PID controller.
+    
+    // state:PID
+    float       last_error;                 // Last recorded error value: [-0.5 -- 0.5] * 100 = percentage error of period
+    int64_t     last_error_us;              // Last recorded error value: [-0.5 -- 0.5] * 100 = percentage error of period
+    float       integral;                   // integral of PID tuner
+        
+    //error. All is in microseconds
+    unsigned int error_idx_jitter;                  // jitter index for circular buffers
+    unsigned int error_idx_sample;                  // Sample index for circular buffers
+    float error_sum;                                // sum of contents of `error[]`
+    float error[FLASHCAM_PLL_JITTER];               // Circular buffer. Holds the relative timing error (microseconds) between frame and pwm-pulse.
+    float error_avg_last;                           // copy of last element added to `error_avg[]`
+    float error_avg_sum;                            // sum of contents of `error_avg[]`
+    float error_avg[FLASHCAM_PLL_SAMPLES];          // Circular buffer. Holds the running average error of `error[]` over a window of `FLASHCAM_PLL_SAMPLES_JITTER` elements
+                                                    //      Used for jitter reduction
+    float error_avg_dt_last;                        // copy of last element added to `error_avg_dt[]`
+    float error_avg_dt_sum;                         // sum of contents of `error_avg_dt[]`
+    float error_avg_dt[FLASHCAM_PLL_SAMPLES];       // Circular buffer. Holds the derivative of `error_avg[]`
+                                                    //      When stable, value should be close to 0. 
+    float error_avg_dt_avg_last;                    // copy of last element added to `error_avg_dt_avg[]`
+    float error_avg_dt_avg_sum;                     // sum of contents of `error_avg_dt_avg[]`
+    float error_avg_dt_avg[FLASHCAM_PLL_SAMPLES];   // Circular buffer. Holds the running average error of `error_avg_dt[]` over a window of `FLASHCAM_PLL_SAMPLES_AVGDT` elements.
+                                                    //      Used to determine stability. When zero, error does not deviate and hence stays constant (or oscilates)   
+    float error_avg_std_last;                       // copy of last element added to `error_avg_std[]`
+    float error_avg_std_sum;                        // sum of contents of `error_avg_std[]`
+    float error_avg_std[FLASHCAM_PLL_SAMPLES];      // Circular buffer. Holds the standard deviation of `error_avg[]`
+                                                    //      Used to determine stability. When (close to) zero, error-variation is constant.  
+    
+#ifdef PLLTUNE
+    float P;
+    float I;
+    float D;
+#endif
+    
+#ifdef STEPRESPONSE
+    unsigned int frames;                    // internal counter
+    unsigned int frames_next;               // number of frames after which the framerate is changed
+    unsigned int step_idx;                  // internal index of selecte framerate
+    float        steps[FLASHCAM_PLL_STEPRESPONSE_STEPS]; //array of framerates.
+#endif
+    
+#endif /* BUILD_FLASHCAM_WITH_PLL */
+
+    
+} FLASHCAM_INTERNAL_STATE_T;
+
+
+
+
+
 
 #endif /* types_h */

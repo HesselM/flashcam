@@ -14,7 +14,7 @@ set(CMAKE_CXX_FLAGS "-fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_C_FLAGS   "-fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
 
 # Main sources for FlashCam-lib
-set(FLASHCAM_SOURCES FlashCam.cpp FlashCam_types.cpp)
+set(FLASHCAM_SOURCES FlashCam.cpp FlashCam_types.cpp util/FlashCam_util_mmal.cpp)
 
 #include required packages
 find_package( Threads REQUIRED )

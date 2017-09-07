@@ -39,6 +39,7 @@
 #define FlashCam_h
 
 #include "FlashCam_types.h"
+
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 
@@ -163,7 +164,7 @@ public:
     int getPLLFPSReducerEnabled( unsigned int *enabledv);
     //get copy of PLL parameters
     // When `PLLTUNE` is defined, this function returns a pointer to the internal structure, otherwise it returns a deep-copy.
-    void getPLLParams( FLASHCAM_PLL_PARAMS_T** );
+    void getPLLParams( FLASHCAM_INTERNAL_STATE_T** );
 
 #ifdef PLLTUNE
     FLASHCAM_SETTINGS_T* settings();

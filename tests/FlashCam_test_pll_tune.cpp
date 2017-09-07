@@ -117,7 +117,7 @@ static double time_sum;
 static int frames;
 
 //FlashCam settings&parameters
-static FLASHCAM_PLL_PARAMS_T *pllparams; //pointer to PLL internal parameters
+static FLASHCAM_INTERNAL_STATE_T *pllparams; //pointer to PLL internal parameters
 static FLASHCAM_SETTINGS_T     settings; //copy of settings structure
 
 //Looptest params

@@ -36,7 +36,9 @@
  ****************************************************************/
 
 #include "FlashCam_pll.h"
+
 #include "FlashCam.h"
+#include "FlashCam_util_mmal.h"
 
 #include <iostream>
 #include <fstream>
@@ -81,7 +83,7 @@ static unsigned char fpsreducer_arr[FPSREDUCER_MEASUREMENTS];
 static uint64_t      fpsreducer_prev;
 
 //private & static parameterlist
-static FLASHCAM_PLL_PARAMS_T _pllparams;
+static FLASHCAM_INTERNAL_STATE_T _pllparams;
 
 
 FlashCamPLL::FlashCamPLL() {
@@ -263,7 +265,7 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         unsigned int newf = _pllparams.pid_framerate * FPS_DENOMINATOR;
 
         if ( oldf == newf)
-            return Status::mmal_to_int(MMAL_SUCCESS);
+            return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
         
         // update so that other components use the proper framerate
         params->framerate = _pllparams.pid_framerate;
@@ -290,10 +292,10 @@ int FlashCamPLL::update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHC
         MMAL_STATUS_T status;
         MMAL_PARAMETER_FRAME_RATE_T param = {{MMAL_PARAMETER_VIDEO_FRAME_RATE, sizeof(param)}, f};
         if ((status = mmal_port_parameter_set(port, &param.hdr)) != MMAL_SUCCESS)
-            return Status::mmal_to_int(status);
+            return FlashCamMMAL::mmal_to_int(status);
     }
     //succes!
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCamPLL::start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
@@ -621,78 +623,78 @@ int FlashCam::setPLLEnabled( unsigned int  enabled ) {
     // Is camera active?
     if (_active) {
         fprintf(stderr, "%s: Cannot change PLL-mode while camera is active\n", __func__);
-        return Status::mmal_to_int(MMAL_EINVAL);
+        return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
     }
 
     _settings.pll_enabled = enabled;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::getPLLEnabled( unsigned int *enabled ) {
     *enabled = _settings.pll_enabled;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::setPLLPulseWidth( float  pulsewidth ){    
     // Is camera active?
     if (_active) {
         fprintf(stderr, "%s: Cannot change PLL-pulsewidth while camera is active\n", __func__);
-        return Status::mmal_to_int(MMAL_EINVAL);
+        return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
     }
 
     if (pulsewidth < 0) 
         pulsewidth = 0;
     _settings.pll_pulsewidth = pulsewidth;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::getPLLPulseWidth( float *pulsewidth ) {
     *pulsewidth = _settings.pll_pulsewidth;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::setPLLDivider( unsigned int  divider ){    
     // Is camera active?
     if (_active) {
         fprintf(stderr, "%s: Cannot change PLL-divider while camera is active\n", __func__);
-        return Status::mmal_to_int(MMAL_EINVAL);
+        return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
     }
 
     if (divider < 1) 
         divider = 1;
     _settings.pll_divider = divider;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::getPLLDivider( unsigned int *divider ) {
     *divider = _settings.pll_divider;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::setPLLOffset( int  offset ){    
     _settings.pll_offset = offset;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::getPLLOffset( int *offset ) {
     *offset = _settings.pll_offset;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::setPLLFPSReducerEnabled( unsigned int  enabled ) {    
     _settings.pll_fpsreducer_enabled = enabled;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
 int FlashCam::getPLLFPSReducerEnabled( unsigned int *enabled ) {
     *enabled = _settings.pll_fpsreducer_enabled;
-    return Status::mmal_to_int(MMAL_SUCCESS);
+    return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
 }
 
-void FlashCam::getPLLParams( FLASHCAM_PLL_PARAMS_T **pllparams) {
+void FlashCam::getPLLParams( FLASHCAM_INTERNAL_STATE_T **pllparams) {
 #ifdef PLLTUNE
     *pllparams = &_pllparams;
 #else
-    memcpy(pllparams, &_pllparams, sizeof(FLASHCAM_PLL_PARAMS_T));
+    memcpy(pllparams, &_pllparams, sizeof(FLASHCAM_INTERNAL_STATE_T));
 #endif
 }

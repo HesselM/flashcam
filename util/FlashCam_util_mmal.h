@@ -1,3 +1,4 @@
+
 /**********************************************************
  Software developed by Hessel van der Molen
  Main author Hessel van der Molen (hmolen.science at gmail dot com)
@@ -35,7 +36,15 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#include <stdio.h>
-#include "FlashCam_types.h"
+#ifndef FlashCam_util_mmal_h
+#define FlashCam_util_mmal_h
 
+#include "interface/vcos/vcos.h"
+#include "interface/mmal/mmal.h"
+#include "interface/mmal/mmal_logging.h"
 
+namespace FlashCamMMAL {
+    int mmal_to_int(MMAL_STATUS_T status);
+}
+
+#endif /* FlashCam_util_mmal_h */
