@@ -38,7 +38,7 @@
 #ifndef FlashCam_h
 #define FlashCam_h
 
-#include "types.h"
+#include "FlashCam_types.h"
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_connection.h"
 

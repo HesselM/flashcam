@@ -36,7 +36,7 @@
  ****************************************************************/
 
 #include <stdio.h>
-#include "types.h"
+#include "FlashCam_types.h"
 
 #include "interface/vcos/vcos.h"
 #include "interface/mmal/mmal_logging.h"

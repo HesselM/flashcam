@@ -38,7 +38,7 @@
 #ifndef FlashCam_util_opengl_h
 #define FlashCam_util_opengl_h
 
-#include "types.h"
+#include "FlashCam_types.h"
 #include "FlashCam_opengl.h"
 
 #include <GLES/gl.h>

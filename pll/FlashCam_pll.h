@@ -38,7 +38,7 @@
 #ifndef FlashCam_pll_h
 #define FlashCam_pll_h
 
-#include "types.h"
+#include "FlashCam_types.h"
 
 
 //Number of samples for the array's for error estimations

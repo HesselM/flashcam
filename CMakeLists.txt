@@ -2,18 +2,19 @@ cmake_minimum_required (VERSION 2.8.11)
 
 project(flashcam)
 
-option(VIDTEST "compile for video testing" OFF)
-option(VIDTESTEGL "compile for video testing with OpenGL" OFF)
-option(PLLTUNE "compile for PLL tuning" OFF)
-option(STEPRESPONSE "compile for steprespoinse" OFF)
-option(FRAMECAPTURE "compile to capture, view and store frames by using OpenCV" OFF)
-option(FRAMECAPTUREEGL "compile to capture, view and store frames by using OpenCV and OpenGL" OFF)
+option(TEST_CAP "compile for capture-mode testing" OFF)
+option(TEST_VID "compile for video-mode streaming testing" OFF)
+option(TEST_VID_OPENGL "compile for video-mode streaming testing with OpenGL rendering" OFF)
+option(TEST_VID_FRAMECAPTURE "compile for video-mode testing. Frames are recorded with a keypress." OFF)
+option(TEST_VID_OPENGL_FRAMECAPTURE "compile for video-mode streaming testing with OpenGL rendering. Frames are recorded with a keypress." OFF)
+option(TEST_PLL_TUNE "compile for PLL tuning" OFF)
+option(TEST_PLL_STEPRESPONSE "compile for PLL stepresponse recording" OFF)
 
 set(CMAKE_CXX_FLAGS "-fpermissive -std=c++11 ${CMAKE_CXX_FLAGS}")
 set(CMAKE_C_FLAGS   "-fpermissive -std=c++11 ${CMAKE_C_FLAGS}")
 
 # Main sources for FlashCam-lib
-set(FLASHCAM_SOURCES FlashCam.cpp types.cpp)
+set(FLASHCAM_SOURCES FlashCam.cpp FlashCam_types.cpp)
 
 #include required packages
 find_package( Threads REQUIRED )
@@ -27,30 +28,43 @@ pkg_search_module( MMAL REQUIRED mmal )
 include_directories( ${MMAL_INCLUDE_DIRS} )
 link_directories( ${MMAL_LIBRARY_DIRS} )
 
+
 # BCM_HOST
 pkg_search_module( BCMHOST REQUIRED bcm_host )
 include_directories( ${BCMHOST_INCLUDE_DIRS} )
 link_directories( ${BCMHOST_LIBRARY_DIRS} )
 
-#EGL -> optional
-if (FRAMECAPTUREEGL OR VIDTESTEGL)
-    pkg_search_module(EGL REQUIRED egl)
+
+# EGL -> optional (required for OpenGL rendering)
+pkg_search_module(EGL REQUIRED egl)
+if (EGL_FOUND) 
     include_directories(${EGL_INCLUDE_DIRS})
     link_directories(${EGL_LIBRARY_DIRS} )
+#add OpenGL sources
+    add_definitions( -DBUILD_FLASHCAM_WITH_OPENGL )
+    set(FLASHCAM_SOURCES    opengl/FlashCam_opengl.cpp; 
+                            util/FlashCam_util_opengl.cpp;
+                            ${FLASHCAM_SOURCES})
+    message(">> Found EGL: including OpenGL functions in build")
+else()
+    message(">> Did not found EGL: OpenGL functions and tests are disabled")
 endif()
+
 
 # WiringPi -> optional (required for PLL)
 pkg_search_module( WIRINGPI wiringpi )
 if (WIRINGPI_FOUND) 
-    message(">> Found WiringPi: including function in build")
     include_directories( ${WIRINGPI_INCLUDE_DIRS} )
     link_directories( ${WIRINGPI_LIBRARY_DIRS} )
 #add PLL sources
     add_definitions( -DBUILD_FLASHCAM_WITH_PLL )
-    set(FLASHCAM_SOURCES FlashCam_pll.cpp; ${FLASHCAM_SOURCES})
+    set(FLASHCAM_SOURCES    pll/FlashCam_pll.cpp; 
+                            ${FLASHCAM_SOURCES})
+    message(">> Found WiringPi: including PLL functions in build")
 else()
-    message(">> Did not found WiringPi: functions disabled")
+    message(">> Did not found WiringPi: PLL functions and tests are disabled")
 endif()
+
 
 # Userland -> if not set via commandline or toolchain, set default value.
 if (NOT USERLAND_DIR)
@@ -60,36 +74,49 @@ endif()
 include_directories(${USERLAND_DIR})
 include_directories(${USERLAND_DIR}/host_applications/linux/libs/sm)
 
+
 # Projectdirs
 include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/pll)
+include_directories(${CMAKE_SOURCE_DIR}/opengl)
+include_directories(${CMAKE_SOURCE_DIR}/tests)
+include_directories(${CMAKE_SOURCE_DIR}/util)
+
 
 # Which test?
-if(VIDTESTEGL)
-    message(">> Building for video-testing with OpenGL (VIDTESTEGL=ON)")
-    set(FLASHCAM_SOURCES FlashCam_opengl.cpp; FlashCam_util_opengl.cpp; FlashCam_test_vid_egl.cpp; ${FLASHCAM_SOURCES})
-    add_definitions( -DEGL)
-elseif (FRAMECAPTUREEGL)
-    message(">> Building for OpenGL framecapturing (FRAMECAPTUREEGL=ON)")
-    set(FLASHCAM_SOURCES FlashCam_opengl.cpp; FlashCam_util_opengl.cpp; FlashCam_framecapture_egl.cpp; ${FLASHCAM_SOURCES})
-    add_definitions( -DEGL)
-elseif (FRAMECAPTURE)
-    message(">> Building for framecapturing (FRAMECAPTURE=ON)")
-    set(FLASHCAM_SOURCES FlashCam_framecapture.cpp; ${FLASHCAM_SOURCES})
-elseif(PLLTUNE)
-    message(">> Building for PLL-tuning (PLLTUNE=ON)")
-    add_definitions( -DPLLTUNE)
-    if (STEPRESPONSE)
-        add_definitions( -DSTEPRESPONSE)
-    endif()
-    set(FLASHCAM_SOURCES FlashCam_tunepll.cpp; FlashCam_util_terminal.cpp; ${FLASHCAM_SOURCES})
-elseif(VIDTEST)
-    message(">> Building for video-testing (VIDTEST=ON)")
-    set(FLASHCAM_SOURCES FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
-else()
-    message(">> Building for capture-testing (VIDTEST=OFF)")
-    set(FLASHCAM_SOURCES FlashCam_test.cpp; ${FLASHCAM_SOURCES})
+if (TEST_CAP)
+    set(FLASHCAM_SOURCES tests/FlashCam_test_cap.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for capture-mode testing. (TEST_CAP=ON)")
+
+elseif (TEST_VID)
+    set(FLASHCAM_SOURCES tests/FlashCam_test_vid.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for video-mode stream testing. (TEST_VID=ON)")
+
+elseif (TEST_VID_FRAMECAPTURE)
+    set(FLASHCAM_SOURCES tests/FlashCam_test_vid_framecapture.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for video-mode stream testing. Frames are recorded with a keypress. (TEST_VID_FRAMECAPTURE=ON)")
+
+elseif (TEST_VID_OPENGL AND EGL_FOUND)
+    set(FLASHCAM_SOURCES tests/FlashCam_test_vid_opengl.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for video-mode stream testing with OpenGL rendering. (TEST_VID_OPENGL=ON)")
+
+elseif (TEST_VID_OPENGL_FRAMECAPTURE AND EGL_FOUND)
+    set(FLASHCAM_SOURCES tests/FlashCam_test_vid_framecapture.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for video-mode stream testing with OpenGL rendering. Frames are recorded with a keypress. (TEST_VID_OPENGL_FRAMECAPTURE=ON)")
+
+elseif (TEST_PLL_TUNE AND WIRINGPI_FOUND)
+    add_definitions( -DPLLTUNE )
+    set(FLASHCAM_SOURCES tests/FlashCam_test_pll_tune.cpp; util/FlashCam_util_terminal.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for PLL tuning. (TEST_PLL_TUNE=ON)")
+
+elseif (TEST_PLL_STEPRESPONSE AND WIRINGPI_FOUND)
+    add_definitions( -DPLLTUNE )
+    add_definitions( -DSTEPRESPONSE )
+    set(FLASHCAM_SOURCES tests/FlashCam_test_pll_tune.cpp; util/FlashCam_util_terminal.cpp; ${FLASHCAM_SOURCES})
+    message(">> Building for PLL strepresponse recording. (TEST_PLL_STEPRESPONSE=ON)")
+
 endif()
-        
+
 
 # Executables
 add_executable(flashcam ${FLASHCAM_SOURCES})
@@ -101,7 +128,7 @@ target_link_libraries(flashcam ${MMAL_LIBRARIES})
 target_link_libraries(flashcam ${BCMHOST_LIBRARIES})
 target_link_libraries(flashcam m)
 
-if (FRAMECAPTUREEGL OR VIDTESTEGL)
+if (EGL_FOUND)
     target_link_libraries(flashcam ${EGL_LIBRARIES})
 endif()
 
