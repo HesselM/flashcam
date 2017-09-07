@@ -7,10 +7,31 @@ With a 320x240 resolution, video mode is able to reach 120fps on a RPi Zero Wire
 Library is work in progress, hence this readme is outdated. Currently functional:
 - Single frame capturing (capture mode): callback to user defined function with full
 - Continous frame capturing (video mode): callback to user defined function per frame.
-- Phase Locked Loop (PLL): synchronised Hardware PWM with exposure time of camera. With proper tuning exposure and PWM signal can be synced within 60 microseconds. Only works in video mode. 
+- Phase Locked Loop (PLL): synchronised Hardware PWM with exposure time of camera. With proper tuning exposure and PWM signal can be synced within 60 microseconds. Only works in video mode.
 - OpenGL rendering: Captured frame is not pushed to CPU domain, but stays in GPU, allowing efficient application of OpenGL shaders.  
 
-Pleas see the `CmakeLists` and `tests` directory for examples and available tests.
+Please see the `CmakeLists` and `tests` directory for examples and available tests.
+
+For crosscompilation with [this setup](https://github.com/HesselM/rpicross_notes), the compilation steps become:
+
+```
+XCS~$ mkdir -p ~/rpi/build/flashcam
+XCS~$ cd ~/rpi/build/flashcam
+XCS~$ cmake \
+-D <SELECT-YOUR-TEST>=ON
+-D CMAKE_TOOLCHAIN_FILE=/home/pi/rpicross_notes/rpi-generic-toolchain.cmake \
+~/path/to/repository/flashcam/
+XCS~$ make
+XCS~$ scp flashcam rpizero-local:~/
+XCS~$ ssh -X rpizero-local
+RPi~$ ./flashcam
+``` 
+
+Or, when PLL is used (which requires root-acces):
+```
+RPi~$ sudo -pc ./flashcam
+```
+
 
 
 # OLD README:
