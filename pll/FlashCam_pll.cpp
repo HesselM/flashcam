@@ -103,16 +103,18 @@ namespace FlashCamPLL {
         
         //clear pll-state
         clearPLLstate();
+        FlashCamPLL::_state->pll_active                = false;
+        FlashCamPLL::_state->pll_active                = false;
+        FlashCamPLL::_state->pll_initialised           = false;
         
         // Check if we have root access.. otherwise system will crash!
         if (getuid()) {
             fprintf(stderr, "%s: FlashCamPLL/WiringPi requires root. Please run with 'sudo'.\n", __func__);
-            FlashCamPLL::_state->pll_error = true;
-            
+            return;
         //if we are root, init WiringPi
         } else if (wiringPiSetup () == -1) {
             fprintf(stderr, "%s: Cannot init WiringPi.\n", __func__);
-            FlashCamPLL::_state->pll_error = true;
+            return;
         }
         
         // Set pin-functions
@@ -120,8 +122,7 @@ namespace FlashCamPLL {
         resetGPIO();
 
         //initialised successfully
-        if (!FlashCamPLL::_state->pll_error)
-            FlashCamPLL::_state->pll_initialised = true;        
+        FlashCamPLL::_state->pll_initialised = true;        
     }
 
     void destroy() {
@@ -133,9 +134,11 @@ namespace FlashCamPLL {
         pwmWrite(PLL_PIN, 0);    
     }
 
-    int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t pts) {
+    int update(uint64_t pts) {
+        //copy pointer to local var: increases readability!
+        FLASHCAM_INTERNAL_STATE_T *state = FlashCamPLL::_state;
         
-        if (settings->pll_enabled) {
+        if (state->settings->pll_enabled) {
             
     // TIMING UPDATES
             // get frametimings in GPU domain.
@@ -143,14 +146,14 @@ namespace FlashCamPLL {
             
             //determine difference
             uint64_t dt_frametime_gpu = 0;
-            if (FlashCamPLL::_state->last_frametime_gpu != 0)
-                dt_frametime_gpu = frametime_gpu - FlashCamPLL::_state->last_frametime_gpu;
+            if (state->pll_last_frametime_gpu != 0)
+                dt_frametime_gpu = frametime_gpu - state->pll_last_frametime_gpu;
             //update last measurements
-            FlashCamPLL::_state->last_frametime_gpu = frametime_gpu;
+            state->pll_last_frametime_gpu = frametime_gpu;
 
     #ifndef STEPRESPONSE                
             //correct pll-period toward frames with pll-divider
-            float frame_period = FlashCamPLL::_state->pwm_period / settings->pll_divider;
+            float frame_period = state->pll_pwm_period / state->settings->pll_divider;
         
     // FPS VERIFICATIOM
             /*
@@ -158,7 +161,7 @@ namespace FlashCamPLL {
             // In such a case the target frequency should be adjusted to a more proper value.
             // As an adjustment of the PWM-system may take too much time, it is not updated. 
             // Instead, the PLL mechanism is tricked to think that the PWM sign al runs half the frequency.
-            if (settings->pll_fpsreducer_enabled) {
+            if (state->settings->pll_fpsreducer_enabled) {
                 // remove old value from circular buffer / sum
                 fpsreducer_sum -= fpsreducer_arr[fpsreducer_idx];
                 // set new value
@@ -168,8 +171,8 @@ namespace FlashCamPLL {
                 if ( fpsreducer_sum >= FPSREDUCER_MAX_DELAYED ) {
                     //reduce frequency 
                     // --> factor 2 so we can still sync with PWM
-                    settings->period  = settings->period  * 2;
-                    FlashCamPLL::_state->framerate = FlashCamPLL::_state->framerate / 2;
+                    state->settings->period  = state->settings->period  * 2;
+                    state->pll_framerate = state->pll_framerate / 2;
                     //reset tracker
                     for( int i=0; i<FPSREDUCER_MEASUREMENTS; i++)
                         fpsreducer_arr[i] = 0;
@@ -181,7 +184,7 @@ namespace FlashCamPLL {
                     fpsreducer_idx  = (fpsreducer_idx + 1) % FPSREDUCER_MEASUREMENTS;
                     fpsreducer_prev = frametime_gpu;
                 }   
-                //if (settings->verbose)
+                //if (state->settings->verbose)
                 //    fprintf(stdout, "PLLtracker: %2d/%2d \n", fpsreducer_sum, FPSREDUCER_MAX_DELAYED);
             }
             */
@@ -190,16 +193,16 @@ namespace FlashCamPLL {
             // Number of pulses since starting PWM signal. 
             // NOTE: Computation assumes that the period of the PWM signal equals the period of the framerate.
             //          This correction is done a couple a lines up. ^^
-            uint32_t k = ((frametime_gpu - FlashCamPLL::_state->starttime_gpu) / frame_period );
+            uint32_t k = ((frametime_gpu - state->pll_starttime_gpu) / frame_period );
 
             // Timestamp of last pulse.
             // NOTE: this assumes that the PWM-clock and GPU-clock do not have drift
-            uint64_t last_pulsetime_gpu = FlashCamPLL::_state->starttime_gpu + (uint64_t)(k * frame_period);
+            uint64_t last_pulsetime_gpu = state->pll_starttime_gpu + (uint64_t)(k * frame_period);
             
             // (Percentual) error with respect to the (corrected) PWM-period.
             // error is with respect to the centre of the estimated interval of the GPU-startime of the hardware PWM
             // NOTE: frametime_gpu > last_pulsetime_gpu.
-            int64_t error_us = (frametime_gpu - last_pulsetime_gpu) + settings->pll_offset + 0.5*FlashCamPLL::_state->startinterval_gpu;
+            int64_t error_us = (frametime_gpu - last_pulsetime_gpu) + state->settings->pll_offset + 0.5*state->pll_startinterval_gpu;
             float error      = error_us / frame_period;
             
             // if error > 50%
@@ -212,124 +215,126 @@ namespace FlashCamPLL {
         
             //update framerate
     #ifdef PLLTUNE
-            float P = FlashCamPLL::_state->P;
-            float I = FlashCamPLL::_state->I;
-            float D = FlashCamPLL::_state->D;
+            float P = state->P;
+            float I = state->I;
+            float D = state->D;
     #else
             //tuning reshults at 30Hz (p=7)
-            float P = 0.233 * FlashCamPLL::_state->framerate;
+            float P = 0.233 * state->pll_framerate;
             float I = 0.0f;
             float D = 0.0f;
     #endif
             
     // STABILITY COMPUTATION
-            unsigned int error_idx_jitter = FlashCamPLL::_state->error_idx_jitter;
-            unsigned int error_idx_sample = FlashCamPLL::_state->error_idx_sample;
+            unsigned int error_idx_jitter = state->pll_error_idx_jitter;
+            unsigned int error_idx_sample = state->pll_error_idx_sample;
             // - error
-            FlashCamPLL::_state->error_sum                            -= FlashCamPLL::_state->error[error_idx_jitter];  // remove earliest error
-            FlashCamPLL::_state->error[error_idx_jitter]               = error_us;                            // replace
-            FlashCamPLL::_state->error_sum                            += FlashCamPLL::_state->error[error_idx_jitter];  // update sum
+            state->pll_error_sum                            -= state->pll_error[error_idx_jitter];  // remove earliest error
+            state->pll_error[error_idx_jitter]               = error_us;                            // replace
+            state->pll_error_sum                            += state->pll_error[error_idx_jitter];  // update sum
             // - avg error
-            FlashCamPLL::_state->error_avg_sum                        -= FlashCamPLL::_state->error_avg[error_idx_sample];
-            FlashCamPLL::_state->error_avg[error_idx_sample]           = FlashCamPLL::_state->error_sum / (float) FLASHCAM_PLL_JITTER;
-            FlashCamPLL::_state->error_avg_sum                        += FlashCamPLL::_state->error_avg[error_idx_sample]; 
+            state->pll_error_avg_sum                        -= state->pll_error_avg[error_idx_sample];
+            state->pll_error_avg[error_idx_sample]           = state->pll_error_sum / (float) FLASHCAM_PLL_JITTER;
+            state->pll_error_avg_sum                        += state->pll_error_avg[error_idx_sample]; 
             // - avg-derivate
-            FlashCamPLL::_state->error_avg_dt_sum                     -= FlashCamPLL::_state->error_avg_dt[error_idx_sample];
-            FlashCamPLL::_state->error_avg_dt[error_idx_sample]        = FlashCamPLL::_state->error_avg[error_idx_sample] - FlashCamPLL::_state->error_avg_last;
-            FlashCamPLL::_state->error_avg_dt_sum                     += FlashCamPLL::_state->error_avg_dt[error_idx_sample]; 
+            state->pll_error_avg_dt_sum                     -= state->pll_error_avg_dt[error_idx_sample];
+            state->pll_error_avg_dt[error_idx_sample]        = state->pll_error_avg[error_idx_sample] - state->pll_error_avg_last;
+            state->pll_error_avg_dt_sum                     += state->pll_error_avg_dt[error_idx_sample]; 
             // - avg-derivate-average
-            FlashCamPLL::_state->error_avg_dt_avg_sum                 -= FlashCamPLL::_state->error_avg_dt_avg[error_idx_sample];
-            FlashCamPLL::_state->error_avg_dt_avg[error_idx_sample]    = FlashCamPLL::_state->error_avg_dt_sum / FLASHCAM_PLL_SAMPLES;
-            FlashCamPLL::_state->error_avg_dt_avg_sum                 += FlashCamPLL::_state->error_avg_dt_avg[error_idx_sample]; 
+            state->pll_error_avg_dt_avg_sum                 -= state->pll_error_avg_dt_avg[error_idx_sample];
+            state->pll_error_avg_dt_avg[error_idx_sample]    = state->pll_error_avg_dt_sum / FLASHCAM_PLL_SAMPLES;
+            state->pll_error_avg_dt_avg_sum                 += state->pll_error_avg_dt_avg[error_idx_sample]; 
             // - avg-std
-            FlashCamPLL::_state->error_avg_std_sum                    -= FlashCamPLL::_state->error_avg_std[error_idx_sample];
-            FlashCamPLL::_state->error_avg_std[error_idx_sample] = 0;
+            state->pll_error_avg_std_sum                    -= state->pll_error_avg_std[error_idx_sample];
+            state->pll_error_avg_std[error_idx_sample] = 0;
             for (int i=0; i<FLASHCAM_PLL_SAMPLES; i++) {
-                float error_avg_diff                         = FlashCamPLL::_state->error_avg[i] - FlashCamPLL::_state->error_avg[error_idx_sample];
-                FlashCamPLL::_state->error_avg_std[error_idx_sample]  += error_avg_diff * error_avg_diff;
+                float error_avg_diff                         = state->pll_error_avg[i] - state->pll_error_avg[error_idx_sample];
+                state->pll_error_avg_std[error_idx_sample]  += error_avg_diff * error_avg_diff;
             }
-            FlashCamPLL::_state->error_avg_std[error_idx_sample]       = sqrt(FlashCamPLL::_state->error_avg_std[error_idx_sample] / (float) FLASHCAM_PLL_SAMPLES);
-            FlashCamPLL::_state->error_avg_std_sum                    += FlashCamPLL::_state->error_avg_std[error_idx_sample] ; 
+            state->pll_error_avg_std[error_idx_sample]       = sqrt(state->pll_error_avg_std[error_idx_sample] / (float) FLASHCAM_PLL_SAMPLES);
+            state->pll_error_avg_std_sum                    += state->pll_error_avg_std[error_idx_sample] ; 
             
     // PID UPDATE
-            FlashCamPLL::_state->integral += ((dt_frametime_gpu/1000.0f) * 0.5 * (error + FlashCamPLL::_state->last_error));
+            state->pll_integral += ((dt_frametime_gpu/1000.0f) * 0.5 * (error + state->pll_last_error));
 
             // Compute new rate
-            FlashCamPLL::_state->pid_framerate  = FlashCamPLL::_state->framerate;
-            FlashCamPLL::_state->pid_framerate += P * error;
-            FlashCamPLL::_state->pid_framerate += I * FlashCamPLL::_state->integral;
-            FlashCamPLL::_state->pid_framerate += D * (error - FlashCamPLL::_state->last_error);
+            state->pll_pid_framerate  = state->pll_framerate;
+            state->pll_pid_framerate += P * error;
+            state->pll_pid_framerate += I * state->pll_integral;
+            state->pll_pid_framerate += D * (error - state->pll_last_error);
             
             //iteration update
-            FlashCamPLL::_state->error_avg_last           = FlashCamPLL::_state->error_avg[error_idx_sample] ;
-            FlashCamPLL::_state->error_avg_dt_last        = FlashCamPLL::_state->error_avg_dt[error_idx_sample] ;
-            FlashCamPLL::_state->error_avg_dt_avg_last    = FlashCamPLL::_state->error_avg_dt_avg[error_idx_sample] ;
-            FlashCamPLL::_state->error_avg_std_last       = FlashCamPLL::_state->error_avg_std[error_idx_sample] ;
-            FlashCamPLL::_state->error_idx_jitter         = (FlashCamPLL::_state->error_idx_jitter + 1) % FLASHCAM_PLL_JITTER;
-            FlashCamPLL::_state->error_idx_sample         = (FlashCamPLL::_state->error_idx_sample + 1) % FLASHCAM_PLL_SAMPLES;
-            FlashCamPLL::_state->last_error               = error;
-            FlashCamPLL::_state->last_error_us            = error_us;
+            state->pll_error_avg_last           = state->pll_error_avg[error_idx_sample] ;
+            state->pll_error_avg_dt_last        = state->pll_error_avg_dt[error_idx_sample] ;
+            state->pll_error_avg_dt_avg_last    = state->pll_error_avg_dt_avg[error_idx_sample] ;
+            state->pll_error_avg_std_last       = state->pll_error_avg_std[error_idx_sample] ;
+            state->pll_error_idx_jitter         = (state->pll_error_idx_jitter + 1) % FLASHCAM_PLL_JITTER;
+            state->pll_error_idx_sample         = (state->pll_error_idx_sample + 1) % FLASHCAM_PLL_SAMPLES;
+            state->pll_last_error               = error;
+            state->pll_last_error_us            = error_us;
 
             fprintf(stdout, "%s: PLL error %" PRId64 " \n", __func__, error_us);
 
     // FPS UPDATE
 
-            //if (settings->verbose)
-            //    fprintf(stdout, "PLLupdate: %f diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz (%9.5f Hz) [ %" PRId64 " ]", P, error_us, 100*error, params->framerate, FlashCamPLL::_state->framerate, settings->pll_startinterval_gpu);
+            //if (state->settings->verbose)
+            //    fprintf(stdout, "PLLupdate: %f diff= %6" PRId64 " us (%7.3f %%) / fps=%9.5f Hz (%9.5f Hz) [ %" PRId64 " ]", P, error_us, 100*error, params->framerate, state->pll_framerate, state->settings->pll_startinterval_gpu);
            
             // check if update is within accuracy / MMAL stepsize.
-            unsigned int oldf = params->framerate * FPS_DENOMINATOR;
-            unsigned int newf = FlashCamPLL::_state->pid_framerate * FPS_DENOMINATOR;
+            unsigned int oldf = state->params->framerate * FPS_DENOMINATOR;
+            unsigned int newf = state->pll_pid_framerate * FPS_DENOMINATOR;
 
             if ( oldf == newf)
                 return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
             
             // update so that other components use the proper framerate
-            params->framerate = FlashCamPLL::_state->pid_framerate;
+            state->params->framerate = state->pll_pid_framerate;
             
     #else   /* STEPRESPONSE */
-            FlashCamPLL::_state->frames++;
+            state->pllframes++;
 
             //next frequency?
-            if ((FlashCamPLL::_state->frames % FlashCamPLL::_state->frames_next) == 0) {
-                FlashCamPLL::_state->step_idx++;
-                FlashCamPLL::_state->step_idx = FlashCamPLL::_state->step_idx % FLASHCAM_PLL_STEPRESPONSE_STEPS;        
+            if ((state->pllframes % state->pllframes_next) == 0) {
+                state->pllstep_idx++;
+                state->pllstep_idx = state->pllstep_idx % FLASHCAM_PLL_STEPRESPONSE_STEPS;        
             }
             //set framerate
-            params->framerate = FlashCamPLL::_state->steps[FlashCamPLL::_state->step_idx];
+            state->params->framerate = state->pllsteps[state->pllstep_idx];
 
     #endif  /* STEPRESPONSE */
                     
             //create rationale
             MMAL_RATIONAL_T f;        
             f.den = FPS_DENOMINATOR;
-            f.num = (unsigned int) (params->framerate * f.den);
+            f.num = (unsigned int) (state->params->framerate * f.den);
             
             //update port.
             MMAL_STATUS_T status;
             MMAL_PARAMETER_FRAME_RATE_T param = {{MMAL_PARAMETER_VIDEO_FRAME_RATE, sizeof(param)}, f};
-            if ((status = mmal_port_parameter_set(port, &param.hdr)) != MMAL_SUCCESS)
+            if ((status = mmal_port_parameter_set(state->port, &param.hdr)) != MMAL_SUCCESS)
                 return FlashCamMMAL::mmal_to_int(status);
         }
         //succes!
         return FlashCamMMAL::mmal_to_int(MMAL_SUCCESS);
     }
 
-    int start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
+    int start() {
+        //copy pointer to local var: increases readability!
+        FLASHCAM_INTERNAL_STATE_T *state = FlashCamPLL::_state;
 
         //initialisation error?
-        if (FlashCamPLL::_state->pll_error) {
+        if (!state->pll_initialised) {
             fprintf(stderr, "%s: FlashCamPLL incorrectly initialised.\n", __func__);
             return 1;
         }
         
-        if (FlashCamPLL::_state->pll_active) {
+        if (state->pll_active) {
             fprintf(stderr, "%s: PLL already running\n", __func__);
             return 1;
         }
         
-        if (settings->pll_enabled) {
-            if (settings->verbose)
+        if (state->settings->pll_enabled) {
+            if (state->settings->verbose)
                 fprintf(stdout, "%s: FlashCamPLL starting..\n", __func__);
 
             // Computations based on:
@@ -441,7 +446,7 @@ namespace FlashCamPLL {
             pwmSetMode( PWM_MODE_MS );   
             
             // Set targeted fps
-            float target_frequency  = params->framerate / settings->pll_divider;
+            float target_frequency  = state->params->framerate / state->settings->pll_divider;
             
             // clock & range
             unsigned int pwm_clock  = 2;
@@ -451,33 +456,33 @@ namespace FlashCamPLL {
             float target_period     = 1000.0f / target_frequency;                   //ms
             
             // Limit pulsewidth to period
-            if ( settings->pll_pulsewidth > target_period) 
-                settings->pll_pulsewidth = target_period;
-            if ( settings->pll_pulsewidth < 0) 
-                settings->pll_pulsewidth = 0;        
+            if ( state->settings->pll_pulsewidth > target_period) 
+                state->settings->pll_pulsewidth = target_period;
+            if ( state->settings->pll_pulsewidth < 0) 
+                state->settings->pll_pulsewidth = 0;        
             
             // Map pulsewidth to RPi-range
-            float dutycycle         = settings->pll_pulsewidth / target_period;
+            float dutycycle         = state->settings->pll_pulsewidth / target_period;
             unsigned int pwm_pw     = dutycycle * pwm_range; 
                     
             // Store PLL/PWM settings
-            FlashCamPLL::_state->pwm_period  = 1000000.0f / target_frequency;                //us
-            FlashCamPLL::_state->framerate   = target_frequency * settings->pll_divider;     //Hz
+            state->pll_pwm_period  = 1000000.0f / target_frequency;                //us
+            state->pll_framerate   = target_frequency * state->settings->pll_divider;     //Hz
 
             // Show computations?
-            if ( settings->verbose ) {            
+            if ( state->settings->verbose ) {            
                 float real_pw    = ( pwm_pw * target_period) / pwm_range;
-                float error_pw   = (settings->pll_pulsewidth - real_pw) / settings->pll_pulsewidth;
+                float error_pw   = (state->settings->pll_pulsewidth - real_pw) / state->settings->pll_pulsewidth;
                 float resolution = target_period / pwm_range;
                 
                 fprintf(stdout, "%s: PLL/PWL SETTINGS\n", __func__);
-                fprintf(stdout, " - Framerate     : %f\n", FlashCamPLL::_state->framerate);
+                fprintf(stdout, " - Framerate     : %f\n", state->pll_framerate);
                 fprintf(stdout, " - PWM frequency : %f\n", target_frequency);
                 fprintf(stdout, " - PWM resolution: %.6f ms\n", resolution );
                 fprintf(stdout, " - RPi PWM-clock : %d\n", pwm_clock);
                 fprintf(stdout, " - RPi PWM-range : %d\n", pwm_range);
                 fprintf(stdout, " - PLL Dutycycle : %.6f %%\n", dutycycle * 100);
-                fprintf(stdout, " - PLL Pulsewidth: %.6f ms\n", settings->pll_pulsewidth);
+                fprintf(stdout, " - PLL Pulsewidth: %.6f ms\n", state->settings->pll_pulsewidth);
                 fprintf(stdout, " - PWM Pulsewidth: %d / %d\n", pwm_pw, pwm_range);
                 fprintf(stdout, " -     --> in ms : %.6f ms\n", real_pw);
                 fprintf(stdout, " - Pulsewidth err: %.6f %%\n", error_pw );
@@ -507,7 +512,7 @@ namespace FlashCamPLL {
                 // set clock (reset PWM)
                 pwmSetClock(pwm_clock);
                 // get GPU time
-                mmal_port_parameter_get_uint64(videoport, MMAL_PARAMETER_SYSTEM_TIME, &tgpu_us);
+                mmal_port_parameter_get_uint64(state->port, MMAL_PARAMETER_SYSTEM_TIME, &tgpu_us);
                 // get finished-time
                 clock_gettime(CLOCK_MONOTONIC, &t2);
                 
@@ -521,101 +526,110 @@ namespace FlashCamPLL {
             } while (tdiff > max_locktime_us);
             
             //set startime estimates
-            FlashCamPLL::_state->starttime_gpu     = tgpu_us - tdiff + 111;
-            FlashCamPLL::_state->startinterval_gpu = tdiff - 111;
+            state->pll_starttime_gpu     = tgpu_us - tdiff + 111;
+            state->pll_startinterval_gpu = tdiff - 111;
              
             // PLL is activated..
-            FlashCamPLL::_state->pll_active = true;
-            if ( settings->verbose ) {
+            state->pll_active = true;
+            if ( state->settings->verbose ) {
                 //clock resolution
                 struct timespec tres;
                 clock_getres(CLOCK_MONOTONIC, &tres);
                 uint64_t res =  ((uint64_t) tres.tv_sec) * 1000000000 + ((uint64_t) tres.tv_nsec);            
                 fprintf(stdout, "%s: PLL/PWM start values\n", __func__);
-                fprintf(stdout, " - Starttime GPU : %" PRIu64 "us\n", FlashCamPLL::_state->starttime_gpu);
-                fprintf(stdout, " - Interval GPU  : %" PRIu64 "us\n", FlashCamPLL::_state->startinterval_gpu);
+                fprintf(stdout, " - Starttime GPU : %" PRIu64 "us\n", state->pll_starttime_gpu);
+                fprintf(stdout, " - Interval GPU  : %" PRIu64 "us\n", state->pll_startinterval_gpu);
                 fprintf(stdout, " - Iterations    : %d\n", iter);
                 fprintf(stdout, " - Resolution    : %" PRIu64 "ns\n", res);
             }
                 
         } else {
-            if (settings->verbose)
+            if (state->settings->verbose)
                 fprintf(stdout, "%s: FlashCamPLL disabled.\n", __func__);
         }
         
-        if ( settings->verbose )
+        if ( state->settings->verbose )
             fprintf(stdout, "%s: Succes.\n", __func__);
 
         return 0;
     }
 
-    int stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params ) {
+    int stop() {
+        //copy pointer to local var: increases readability!
+        FLASHCAM_INTERNAL_STATE_T *state = FlashCamPLL::_state;
 
         //initialisation error?
-        if (FlashCamPLL::_state->pll_error) {
+        if (!state->pll_initialised) {
             fprintf(stderr, "%s: FlashCamPLL incorrectly initialised.\n", __func__);
             return 1;
         }
         
-        if (!FlashCamPLL::_state->pll_active) {
+        if (!state->pll_active) {
             fprintf(stderr, "%s: PLL not running\n", __func__);
             return 0;
         }
         
-        if (settings->verbose)
+        if (state->settings->verbose)
             fprintf(stdout, "%s: stopping PLL..\n", __func__);
 
         //stop PWM
         resetGPIO();
         //reset fps
-        params->framerate = FlashCamPLL::_state->framerate;
+        state->params->framerate = state->pll_framerate;
         //reset active-flag
         // --> stops PLL-callback from processing new MMAL updates
-        settings->pll_enabled = false;
-        FlashCamPLL::_state->pll_active = false;
+        state->settings->pll_enabled = false;
+        state->pll_active = false;
         
         //wait for callback to process current update
         usleep(1000000); //sleep 1s
         
-        if ( settings->verbose )
+        if ( state->settings->verbose )
             fprintf(stdout, "%s: Succes.\n", __func__);
 
         return 0;
     }
 
     void clearPLLstate() {
+        //copy pointer to local var: increases readability!
+        FLASHCAM_INTERNAL_STATE_T *state = FlashCamPLL::_state;
+
         for( int i=0; i<FLASHCAM_PLL_JITTER; i++) {
-            FlashCamPLL::_state->error[i] = 0;
+            state->pll_error[i] = 0;
         }
         for( int i=0; i<FLASHCAM_PLL_SAMPLES; i++) {
-            FlashCamPLL::_state->error_avg[i]          = 0;
-            FlashCamPLL::_state->error_avg_dt[i]       = 0;
-            FlashCamPLL::_state->error_avg_dt_avg[i]   = 0;
-            FlashCamPLL::_state->error_avg_std[i]      = 0;
+            state->pll_error_avg[i]          = 0;
+            state->pll_error_avg_dt[i]       = 0;
+            state->pll_error_avg_dt_avg[i]   = 0;
+            state->pll_error_avg_std[i]      = 0;
         }
         
-        FlashCamPLL::_state->framerate                 = 0;
-        FlashCamPLL::_state->pwm_period                = 0;
-        FlashCamPLL::_state->starttime_gpu             = 0;
-        FlashCamPLL::_state->startinterval_gpu         = 0;
-        FlashCamPLL::_state->last_frametime_gpu        = 0;
-        FlashCamPLL::_state->locktime                  = 0;
-        FlashCamPLL::_state->pid_framerate             = 0;
-        FlashCamPLL::_state->last_error                = 0;
-        FlashCamPLL::_state->last_error_us             = 0;
-        FlashCamPLL::_state->integral                  = 0;
+        state->pll_framerate                 = 0;
+        state->pll_pwm_period                = 0;
+        state->pll_starttime_gpu             = 0;
+        state->pll_startinterval_gpu         = 0;
+        state->pll_last_frametime_gpu        = 0;
+        state->pll_pid_framerate             = 0;
+        state->pll_last_error                = 0;
+        state->pll_last_error_us             = 0;
+        state->pll_integral                  = 0;
         
-        FlashCamPLL::_state->error_idx_jitter          = 0;
-        FlashCamPLL::_state->error_idx_sample          = 0;
-        FlashCamPLL::_state->error_sum                 = 0;
-        FlashCamPLL::_state->error_avg_last            = 0;
-        FlashCamPLL::_state->error_avg_sum             = 0;
-        FlashCamPLL::_state->error_avg_dt_last         = 0;
-        FlashCamPLL::_state->error_avg_dt_sum          = 0;
-        FlashCamPLL::_state->error_avg_dt_avg_last     = 0;
-        FlashCamPLL::_state->error_avg_dt_avg_sum      = 0;
-        FlashCamPLL::_state->error_avg_std_last        = 0;
-        FlashCamPLL::_state->error_avg_std_sum         = 0;
+        state->pll_error_idx_jitter          = 0;
+        state->pll_error_idx_sample          = 0;
+        state->pll_error_sum                 = 0;
+        state->pll_error_avg_last            = 0;
+        state->pll_error_avg_sum             = 0;
+        state->pll_error_avg_dt_last         = 0;
+        state->pll_error_avg_dt_sum          = 0;
+        state->pll_error_avg_dt_avg_last     = 0;
+        state->pll_error_avg_dt_avg_sum      = 0;
+        state->pll_error_avg_std_last        = 0;
+        state->pll_error_avg_std_sum         = 0;
+        
+        //do not clear
+        // float P
+        // float I
+        // float D
     }
 
     void getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
@@ -640,7 +654,7 @@ namespace FlashCamPLL {
 
 int FlashCam::setPLLEnabled( unsigned int  enabled ) {    
     // Is camera active?
-    if (FlashCamPLL::_state->pll_active) {
+    if (_state.pll_active) {
         fprintf(stderr, "%s: Cannot change PLL-mode while camera is active\n", __func__);
         return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
     }
@@ -656,7 +670,7 @@ int FlashCam::getPLLEnabled( unsigned int *enabled ) {
 
 int FlashCam::setPLLPulseWidth( float  pulsewidth ){    
     // Is camera active?
-    if (FlashCamPLL::_state->pll_active) {
+    if (_state.pll_active) {
         fprintf(stderr, "%s: Cannot change PLL-pulsewidth while camera is active\n", __func__);
         return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
     }
@@ -674,7 +688,7 @@ int FlashCam::getPLLPulseWidth( float *pulsewidth ) {
 
 int FlashCam::setPLLDivider( unsigned int  divider ){    
     // Is camera active?
-    if (FlashCamPLL::_state->pll_active) {
+    if (_state.pll_active) {
         fprintf(stderr, "%s: Cannot change PLL-divider while camera is active\n", __func__);
         return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
     }
@@ -711,9 +725,11 @@ int FlashCam::getPLLFPSReducerEnabled( unsigned int *enabled ) {
 }
 
 void FlashCam::getPLLParams( FLASHCAM_INTERNAL_STATE_T **pllparams) {
+    /*
 #ifdef PLLTUNE
     *pllparams = &FlashCamPLL::_state;
 #else
     memcpy(pllparams, &FlashCamPLL::_state, sizeof(FLASHCAM_INTERNAL_STATE_T));
 #endif
+    */
 }

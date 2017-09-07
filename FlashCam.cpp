@@ -63,9 +63,6 @@ FlashCam::~FlashCam(){
     destroyComponents();
     FlashCamPLL::destroy();
     vcos_semaphore_delete(&_userdata.sem_capture);
-//#ifdef BUILD_FLASHCAM_WITH_PLL
-//    delete _PLL;
-//#endif
 }
 
 void FlashCam::clear() {    
@@ -85,9 +82,8 @@ void FlashCam::clear() {
     
     _initialised = false;
     _active      = false;
-//#ifdef BUILD_FLASHCAM_WITH_PLL
-//    _PLL         = FlashCamPLL();
-//#endif
+
+    
     FlashCamPLL::init(&_state);
     
     //init with default parameter set;
@@ -571,7 +567,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
         if (buffer->length) {
 
 #ifdef BUILD_FLASHCAM_WITH_PLL
-            FlashCamPLL::update(port, userdata->settings, userdata->params, buffer->pts);
+            FlashCamPLL::update(buffer->pts);
 #endif
             
             //OpenGL processing?
@@ -727,7 +723,11 @@ int FlashCam::startCapture() {
     if (_settings.mode == FLASHCAM_MODE_VIDEO) {
         
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        if (FlashCamPLL::start( _camera_component->output[MMAL_CAMERA_VIDEO_PORT], &_settings, &_params)) {
+        _state.port     = _camera_component->output[MMAL_CAMERA_VIDEO_PORT];
+        _state.settings = &_settings;
+        _state.params   = &_params;
+        
+        if (FlashCamPLL::start()) {
             fprintf(stderr, "%s: PLL cannot be started.\n", __func__);
             return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
         }
@@ -790,7 +790,7 @@ int FlashCam::stopCapture() {
         //shutdown PLL before camera, as PLL has some internal Camera dependencies.
         // Shutting down camera will crash PLL.
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        if (FlashCamPLL::stop( &_settings, &_params )) {
+        if (FlashCamPLL::stop()) {
             fprintf(stderr, "%s: PLL cannot be stopped.\n", __func__);
             return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
         }

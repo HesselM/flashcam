@@ -40,18 +40,21 @@
 
 #include "FlashCam_types.h"
 
+
 namespace FlashCamPLL {
 
+    //init/destroy PLL setup
     void init(FLASHCAM_INTERNAL_STATE_T *state);
     void destroy();    
 
     //start/stop PLL mechanism. Functions are invoked when camera is started/stopped in FlashCam.
-    int start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
-    int stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
-    
-    //update Lock. This function is a callback from FlashCam when a frame is recieved.
-    int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t pts);
-    
+    int start();
+    int stop();
+
+    // Update phase-lock computation. This function is called by FlashCam each time a frame is recieved
+    //  The computation uses the internal-state structure to update the relevant lock-values
+    int update(uint64_t pts);
+
     //settings..
     void getDefaultSettings( FLASHCAM_SETTINGS_T *settings );
     void printSettings( FLASHCAM_SETTINGS_T *settings );    
