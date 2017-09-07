@@ -43,8 +43,8 @@
 //
 
 #include "FlashCam.h"
-#include "FlashCamEGL.h"
-#include "FlashCamEGLUtil.h"
+#include "FlashCam_opengl.h"
+#include "FlashCam_util_opengl.h"
 
 #include <stdlib.h>
 
@@ -88,9 +88,9 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
         captured = 1;
 
         fprintf(stdout, "frame (%d)\n", captured);
-        GLuint result_texid = FlashCamEGL::createTexture(); eglcheck();
+        GLuint result_texid = FlashCamOpenGL::createTexture(); eglcheck();
         
-        FlashCamEGL::textureOES2rgb(texid, result_texid); eglcheck();
+        FlashCamOpenGL::textureOES2rgb(texid, result_texid); eglcheck();
         glBindTexture(GL_TEXTURE_2D, result_texid); eglcheck();
 
         fprintf(stdout, "Starting to read..\n");
@@ -100,7 +100,7 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
                      GL_RGBA,
                      GL_UNSIGNED_BYTE,
                      Y.data);
-        FlashCamEGL::eglDispError();
+        FlashCamOpenGL::eglDispError();
         eglcheck();
 
         fprintf(stdout, "Texture read\n");

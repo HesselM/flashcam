@@ -35,7 +35,7 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#include "FlashCamPLL.h"
+#include "FlashCam_pll.h"
 #include "FlashCam.h"
 
 #include <iostream>

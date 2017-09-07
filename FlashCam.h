@@ -43,11 +43,11 @@
 #include "interface/mmal/util/mmal_connection.h"
 
 #ifdef BUILD_FLASHCAM_WITH_PLL
-#include "FlashCamPLL.h"
+#include "FlashCam_pll.h"
 #endif
 
-#ifdef EGL
-#include "FlashCamEGL.h"
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
+#include "FlashCam_opengl.h"
 #endif
 
 class FlashCam 
@@ -66,7 +66,7 @@ private:
     MMAL_POOL_T                *_camera_pool        = NULL;
     unsigned char              *_framebuffer        = NULL;
     FLASHCAM_PORT_USERDATA_T    _userdata           = {};
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     MMAL_QUEUE_T               *_opengl_queue       = NULL;
 #endif
 #ifdef BUILD_FLASHCAM_WITH_PLL
@@ -114,7 +114,7 @@ public:
     
     //callback options --> for when a full frame is received
     void setFrameCallback(FLASHCAM_CALLBACK_T callback);
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     void setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback);
 #endif
     void resetFrameCallback();

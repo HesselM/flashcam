@@ -35,8 +35,8 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#ifndef FlashCamPLL_h
-#define FlashCamPLL_h
+#ifndef FlashCam_pll_h
+#define FlashCam_pll_h
 
 #include "types.h"
 
@@ -136,4 +136,4 @@ public:
 };
 
 
-#endif /* FlashCamPLL_h */
+#endif /* FlashCam_pll_h */

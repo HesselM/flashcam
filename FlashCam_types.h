@@ -42,7 +42,7 @@
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/mmal_logging.h"
 
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
 #include "GLES2/gl2.h"
 #include "EGL/egl.h"
 #include "EGL/eglext.h"
@@ -81,7 +81,7 @@ typedef enum {
 //  - int width             : width of image
 //  - int height            : height of image
 typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
 typedef void (*FLASHCAM_CALLBACK_EGL_T) (GLuint texid, EGLImageKHR *img, int w, int h);
 #endif
 
@@ -160,7 +160,7 @@ typedef struct {
     //      - In Capturemode: used to indicate completion of frame
     //      - In VideoMode + EGL: used to signal EGL-worker to process frame
     FLASHCAM_CALLBACK_T      callback;          // Callback to user function
-#ifdef EGL  
+#ifdef BUILD_FLASHCAM_WITH_OPENGL  
     MMAL_QUEUE_T            *opengl_queue;      // Pointer to OpenGL Queue
     FLASHCAM_CALLBACK_EGL_T  callback_egl;      // OpenGL Callback to user function
 #endif

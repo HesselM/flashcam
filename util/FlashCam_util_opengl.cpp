@@ -1,13 +1,13 @@
 //
-//  FlashCamEGLUtil.cpp
+//  FlashCam_util_opengl.cpp
 //  
 //
 //  Created by Hessel van der Molen on 05/09/17.
 //
 //
 
-#include "FlashCamEGL.h"
-#include "FlashCamEGLUtil.h"
+#include "FlashCam_opengl.h"
+#include "FlashCam_util_opengl.h"
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -16,7 +16,7 @@
 #include <iostream>
 #include <vector>
 
-namespace FlashCamEGL {
+namespace FlashCamOpenGL {
     
     //Pointer to internal-state structure
     // ==> Used for future calls for rendering
@@ -166,7 +166,7 @@ namespace FlashCamEGL {
     
     void initOpenGL(FLASHCAM_EGL_t* state) {
         //copy state
-        FlashCamEGL::state = state;
+        FlashCamOpenGL::state = state;
         
         EGLBoolean result;
         
@@ -255,27 +255,27 @@ namespace FlashCamEGL {
         
         //Load Shaders
         //load program/buffers upon first call
-        FlashCamEGL::progid_oes2rgb  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
-        FlashCamEGL::progid_rgbblur  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
-        FlashCamEGL::progid_rgbsobel = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
+        FlashCamOpenGL::progid_oes2rgb  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
+        FlashCamOpenGL::progid_rgbblur  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
+        FlashCamOpenGL::progid_rgbsobel = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
 
         //setup buffers
-        FlashCamEGL::vbufid         = loadVertixBuffer();   
-        FlashCamEGL::fbufid         = loadFrameBuffer();   
+        FlashCamOpenGL::vbufid         = loadVertixBuffer();   
+        FlashCamOpenGL::fbufid         = loadFrameBuffer();   
     }
 
     void clearOpenGL() {
         std::cout << "Clear OpenGL." << std::endl;
 
         //destroy textures
-        glDeleteTextures(1, &FlashCamEGL::state->texture);
-        for (std::vector<GLuint>::iterator it = FlashCamEGL::textures.begin() ; it != FlashCamEGL::textures.end(); ++it)
+        glDeleteTextures(1, &FlashCamOpenGL::state->texture);
+        for (std::vector<GLuint>::iterator it = FlashCamOpenGL::textures.begin() ; it != FlashCamOpenGL::textures.end(); ++it)
             glDeleteTextures(1, (GLuint*) &*it);
 
         //destroy image
-        if (FlashCamEGL::state->img != EGL_NO_IMAGE_KHR) {
-            eglDestroyImageKHR(FlashCamEGL::state->display, FlashCamEGL::state->img);
-            FlashCamEGL::state->img = EGL_NO_IMAGE_KHR;
+        if (FlashCamOpenGL::state->img != EGL_NO_IMAGE_KHR) {
+            eglDestroyImageKHR(FlashCamOpenGL::state->display, FlashCamOpenGL::state->img);
+            FlashCamOpenGL::state->img = EGL_NO_IMAGE_KHR;
         }
         
         //destroy buffers;
@@ -286,10 +286,10 @@ namespace FlashCamEGL {
         glDeleteProgram(progid_rgbsobel);
         
         //detroy openGL
-        eglMakeCurrent(FlashCamEGL::state->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        eglDestroyContext(FlashCamEGL::state->display, FlashCamEGL::state->context);
-        eglDestroySurface(FlashCamEGL::state->display, FlashCamEGL::state->surface);
-        eglTerminate(FlashCamEGL::state->display);
+        eglMakeCurrent(FlashCamOpenGL::state->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        eglDestroyContext(FlashCamOpenGL::state->display, FlashCamOpenGL::state->context);
+        eglDestroySurface(FlashCamOpenGL::state->display, FlashCamOpenGL::state->surface);
+        eglTerminate(FlashCamOpenGL::state->display);
     }
     
     
@@ -299,19 +299,19 @@ namespace FlashCamEGL {
     void mmalbuf2TextureOES_internal(MMAL_BUFFER_HEADER_T *buffer) {
         
         //set texture id
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, FlashCamEGL::state->texture); eglcheck();
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, FlashCamOpenGL::state->texture); eglcheck();
         
         //destroy previous image
-        if (FlashCamEGL::state->img != EGL_NO_IMAGE_KHR) {
-            eglDestroyImageKHR(FlashCamEGL::state->display, state->img);
-            FlashCamEGL::state->img = EGL_NO_IMAGE_KHR;
+        if (FlashCamOpenGL::state->img != EGL_NO_IMAGE_KHR) {
+            eglDestroyImageKHR(FlashCamOpenGL::state->display, state->img);
+            FlashCamOpenGL::state->img = EGL_NO_IMAGE_KHR;
         }
         
         //Create new image
-        state->img = eglCreateImageKHR(FlashCamEGL::state->display, EGL_NO_CONTEXT, EGL_IMAGE_BRCM_MULTIMEDIA_Y, (EGLClientBuffer) buffer->data, NULL);
+        state->img = eglCreateImageKHR(FlashCamOpenGL::state->display, EGL_NO_CONTEXT, EGL_IMAGE_BRCM_MULTIMEDIA_Y, (EGLClientBuffer) buffer->data, NULL);
         eglcheck();
         
-        glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, FlashCamEGL::state->img);
+        glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, FlashCamOpenGL::state->img);
         eglcheck();
         
         //Scaling: nearest (=no) interpolation for scaling down and up.
@@ -331,21 +331,21 @@ namespace FlashCamEGL {
         
         
         // release and lock buffer of current EGLImage
-        //if (FlashCamEGL::state->buffer_img)
-        //    mmal_buffer_header_release(FlashCamEGL::state->buffer_img);
-        //FlashCamEGL::state->buffer_img = buffer;
+        //if (FlashCamOpenGL::state->buffer_img)
+        //    mmal_buffer_header_release(FlashCamOpenGL::state->buffer_img);
+        //FlashCamOpenGL::state->buffer_img = buffer;
     }
     
 
     void texture2texture(GLuint input_texid, GLenum input_target,  GLuint result_texid, GLuint progid) {        
-        int width  = FlashCamEGL::state->userdata->settings->width;
-        int height = FlashCamEGL::state->userdata->settings->height;
+        int width  = FlashCamOpenGL::state->userdata->settings->width;
+        int height = FlashCamOpenGL::state->userdata->settings->height;
     
         //select proper progam
         glUseProgram(progid); eglcheck();        
         //Set framebuffer and render postitions
-        glBindBuffer(GL_ARRAY_BUFFER, FlashCamEGL::vbufid); eglcheck();
-        glBindFramebuffer(GL_FRAMEBUFFER, FlashCamEGL::fbufid); eglcheck();
+        glBindBuffer(GL_ARRAY_BUFFER, FlashCamOpenGL::vbufid); eglcheck();
+        glBindFramebuffer(GL_FRAMEBUFFER, FlashCamOpenGL::fbufid); eglcheck();
         
         //set output texture
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result_texid, 0); eglcheck();
@@ -401,8 +401,8 @@ namespace FlashCamEGL {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);eglcheck();
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);eglcheck();
         
-        int width  = FlashCamEGL::state->userdata->settings->width;
-        int height = FlashCamEGL::state->userdata->settings->height;
+        int width  = FlashCamOpenGL::state->userdata->settings->width;
+        int height = FlashCamOpenGL::state->userdata->settings->height;
         
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL); eglcheck();
         

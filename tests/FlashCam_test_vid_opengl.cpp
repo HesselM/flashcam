@@ -43,8 +43,8 @@
 //
 
 #include "FlashCam.h"
-#include "FlashCamEGL.h"
-#include "FlashCamEGLUtil.h"
+#include "FlashCam_opengl.h"
+#include "FlashCam_util_opengl.h"
 
 #include <stdlib.h>
 
@@ -102,11 +102,11 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
         //have we a target texid?
         if (texid_rgb == 0) {
             fprintf(stdout, "init rgb texture..\n");
-            texid_rgb = FlashCamEGL::createTexture(); eglcheck();
+            texid_rgb = FlashCamOpenGL::createTexture(); eglcheck();
         }
         
         //Update target texture
-        FlashCamEGL::textureOES2rgb(texid, texid_rgb); eglcheck();
+        FlashCamOpenGL::textureOES2rgb(texid, texid_rgb); eglcheck();
         
         //apply shader?
         if (shader > 0) {
@@ -114,13 +114,13 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
             //have we a target texid?
             if (texid_filtered == 0) {
                 fprintf(stdout, "init filtered texture..\n");
-                texid_filtered = FlashCamEGL::createTexture(); eglcheck();
+                texid_filtered = FlashCamOpenGL::createTexture(); eglcheck();
             }
             
             if (shader == 1)
-                FlashCamEGL::textureRGBblur(texid_rgb, texid_filtered); eglcheck();
+                FlashCamOpenGL::textureRGBblur(texid_rgb, texid_filtered); eglcheck();
             if (shader == 2)
-                FlashCamEGL::textureRGBsobel(texid_rgb, texid_filtered); eglcheck();
+                FlashCamOpenGL::textureRGBsobel(texid_rgb, texid_filtered); eglcheck();
             
             glBindTexture(GL_TEXTURE_2D, texid_filtered); eglcheck();
         } else {
@@ -130,7 +130,7 @@ void flashcam_callback(GLuint texid, EGLImageKHR *img, int w, int h) {
         //Read pixels to OpenCV array.
         // Note that this is exremely inefficient, but it serves the purpose to demonstrate the functioning.
         glReadPixels(0, 0, w, h,  GL_RGBA, GL_UNSIGNED_BYTE, Y.data);
-        FlashCamEGL::eglDispError();
+        FlashCamOpenGL::eglDispError();
         eglcheck();
         
         fprintf(stdout, "..PROCESSED..\n");        

@@ -35,11 +35,11 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#ifndef FlashCamEGLUtil_h
-#define FlashCamEGLUtil_h
+#ifndef FlashCam_util_opengl_h
+#define FlashCam_util_opengl_h
 
 #include "types.h"
-#include "FlashCamEGL.h"
+#include "FlashCam_opengl.h"
 
 #include <GLES/gl.h>
 #include <GLES/glext.h>
@@ -54,7 +54,7 @@
 #define  eglcheck() assert(glGetError() == 0)
 #define reglcheck() assert(EGL_FALSE != result)
 
-namespace FlashCamEGL {
+namespace FlashCamOpenGL {
     
     //initialize OpenGL
     void initOpenGL(FLASHCAM_EGL_t* state);
@@ -63,7 +63,7 @@ namespace FlashCamEGL {
     //transform a MMAL-buffer into a OpenGL texture.
     // ==> Used internal state representation. 
     //      Result is given via UserCall-back. 
-    //      See FlashCamEGL_framecapture.cpp
+    //      See FlashCam_test_vid_opengl_framecapture.cpp
     void mmalbuf2TextureOES_internal(MMAL_BUFFER_HEADER_T *buffer);
     
     //transform OES texture (=Lumiance only) to RGB
@@ -81,4 +81,4 @@ namespace FlashCamEGL {
 }
 
 
-#endif /* FlashCamEGLUtil_h */
+#endif /* FlashCam_util_opengl_h */

@@ -191,10 +191,10 @@ int FlashCam::setupComponents() {
     _userdata.framebuffer_idx   = 0;
     _userdata.callback          = NULL;
     
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     _userdata.callback_egl      = NULL;
     _userdata.opengl_queue      = NULL;
-    FlashCamEGL::init();
+    FlashCamOpenGL::init();
 #endif    
     
     //Status flags
@@ -364,7 +364,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     format->es->video.frame_rate.num    = VIDEO_FRAME_RATE_NUM;
     format->es->video.frame_rate.den    = VIDEO_FRAME_RATE_DEN;
     
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     /* Enable ZERO_COPY mode on the preview port which instructs MMAL to only
      * pass the 4-byte opaque buffer handle instead of the contents of the opaque
      * buffer.
@@ -487,12 +487,12 @@ void FlashCam::destroyComponents() {
     if (_framebuffer) 
         delete[] _framebuffer;
     
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     if (_opengl_queue) {
         mmal_queue_destroy( _opengl_queue );
         _opengl_queue = NULL;
     }
-    FlashCamEGL::destroy();
+    FlashCamOpenGL::destroy();
 #endif
 
     // Reset pointers
@@ -573,7 +573,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
             
             //OpenGL processing?
             if (userdata->settings->useOpenGL) {
-#ifdef EGL      
+#ifdef BUILD_FLASHCAM_WITH_OPENGL      
                 unsigned int length = mmal_queue_length(userdata->opengl_queue);
                 //fprintf(stdout, "%s: QueueSize - %d (%d)  \n", __func__, length, port->buffer_num);
                 
@@ -714,10 +714,10 @@ int FlashCam::startCapture() {
     if (_settings.verbose)
         fprintf(stdout, "%s: Starting capture\n", __func__);
 
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     //start EGL thread for processing
     if (_settings.useOpenGL) {
-        FlashCamEGL::start(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], &_userdata);
+        FlashCamOpenGL::start(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], &_userdata);
     }
 #endif 
         
@@ -812,14 +812,14 @@ int FlashCam::stopCapture() {
         return Status::mmal_to_int(MMAL_EINVAL);
     }
     
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     //Stop EGL thread
     // This needs to be done after shutting down the camera, 
     //  ensuring that pending frames/buffers are processed
     //  and pushed to the appropiate inter-thread queues. 
     // Sleeping is required to provide all async mmal-related systems to terminate.
     usleep(1000000);
-    FlashCamEGL::stop();
+    FlashCamOpenGL::stop();
 #endif 
     
     //camera inactive
@@ -838,7 +838,7 @@ void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_T callback) {
     _userdata.callback = callback;
 }
 
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
 void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback) {
     if (_active) return; //no changer/reset while in capturemode
     _userdata.callback_egl = callback;
@@ -1023,7 +1023,7 @@ int FlashCam::setSettingCaptureMode( FLASHCAM_MODE_T  mode ) {
         _userdata.camera_pool = _camera_pool;
     }
     
-#ifdef EGL
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
     if (_settings.useOpenGL) {
         _opengl_queue = mmal_queue_create();
         if (! _opengl_queue ) {
@@ -1091,7 +1091,7 @@ int FlashCam::getSettingSensorMode( unsigned int *sensormode ) {
 /*** PLL FUNCTIONS ***/
 
 #ifndef BUILD_FLASHCAM_WITH_PLL
-// PLL function-implementations are extern: FlashCamPLL.cpp
+// PLL function-implementations are extern: FlashCam_pll.cpp
 // These functions are prototypes in case PLL is not build.
 
 int FlashCam::setPLLEnabled( unsigned int  enabled ) {    

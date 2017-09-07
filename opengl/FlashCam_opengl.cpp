@@ -35,8 +35,8 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#include "FlashCamEGL.h"
-#include "FlashCamEGLUtil.h"
+#include "FlashCam_opengl.h"
+#include "FlashCam_util_opengl.h"
 
 #include <assert.h>
 #include <bcm_host.h>
@@ -46,7 +46,7 @@
 #include <stdio.h>
 
 
-namespace FlashCamEGL {
+namespace FlashCamOpenGL {
     
     //internal-struct tracking the state of all OpenGL / EGL threads, settings, etc.
     static FLASHCAM_EGL_t state;
@@ -122,26 +122,26 @@ namespace FlashCamEGL {
         fprintf(stdout, "EGL:starting..\n");
 
         //set basic settings
-        FlashCamEGL::state.stop     = false;
-        FlashCamEGL::state.update   = true;
-        FlashCamEGL::state.port     = port;
-        FlashCamEGL::state.userdata = userdata;
-        FlashCamEGL::state.img      = EGL_NO_IMAGE_KHR;
+        FlashCamOpenGL::state.stop     = false;
+        FlashCamOpenGL::state.update   = true;
+        FlashCamOpenGL::state.port     = port;
+        FlashCamOpenGL::state.userdata = userdata;
+        FlashCamOpenGL::state.img      = EGL_NO_IMAGE_KHR;
                         
         //clear queue..
         fprintf(stdout, "- resetting queue..\n");
-        while (mmal_queue_get(FlashCamEGL::state.userdata->opengl_queue) != NULL);                
+        while (mmal_queue_get(FlashCamOpenGL::state.userdata->opengl_queue) != NULL);                
 
         //reset semaphore
         fprintf(stdout, "- resetting semaphore..\n");
-        while (vcos_semaphore_trywait(&(FlashCamEGL::state.userdata->sem_capture)) != VCOS_EAGAIN);
+        while (vcos_semaphore_trywait(&(FlashCamOpenGL::state.userdata->sem_capture)) != VCOS_EAGAIN);
         
         
         //start worker thread
         fprintf(stdout, "- starting worker..\n");
-        status = vcos_thread_create(&(FlashCamEGL::state.worker_thread), "FlashCamEGL-worker", NULL, FlashCamEGL::worker, &(FlashCamEGL::state));
+        status = vcos_thread_create(&(FlashCamOpenGL::state.worker_thread), "FlashCamOpenGL-worker", NULL, FlashCamOpenGL::worker, &(FlashCamOpenGL::state));
         if (status != VCOS_SUCCESS)
-            vcos_log_error("%s: Failed to start `FlashCamEGL-worker` (%d)", VCOS_FUNCTION, status);
+            vcos_log_error("%s: Failed to start `FlashCamOpenGL-worker` (%d)", VCOS_FUNCTION, status);
 
         fprintf(stdout, "- done.\n");
 
@@ -156,22 +156,22 @@ namespace FlashCamEGL {
         fprintf(stdout, "EGL:stopping..\n");
         
         // STOP SIGNAL
-        if (!FlashCamEGL::state.stop) {
+        if (!FlashCamOpenGL::state.stop) {
             //vcos_log_trace("Stopping GL preview");
             fprintf(stdout, "- worker is running\n");
 
             //notify worker we are done. 
             //  As the worker blocks due to the sempahore, we need to set the status and post an update
-            FlashCamEGL::state.stop = true;
-            vcos_semaphore_post(&(FlashCamEGL::state.userdata->sem_capture));
+            FlashCamOpenGL::state.stop = true;
+            vcos_semaphore_post(&(FlashCamOpenGL::state.userdata->sem_capture));
             
             fprintf(stdout, "- Waiting for worker\n");
 
             //Wait for worker to terminate.
-            vcos_thread_join(&(FlashCamEGL::state.worker_thread), NULL);
+            vcos_thread_join(&(FlashCamOpenGL::state.worker_thread), NULL);
             
             //clear OpenGL
-            FlashCamEGL::clearOpenGL();
+            FlashCamOpenGL::clearOpenGL();
         
             fprintf(stdout, "- Done\n");
         }
@@ -180,6 +180,6 @@ namespace FlashCamEGL {
     void destroy() {
         fprintf(stdout, "EGL:destroying..\n");
 
-        //vcos_semaphore_delete(&(FlashCamEGL::sem_captyr));
+        //vcos_semaphore_delete(&(FlashCamOpenGL::sem_captyr));
     }    
 }

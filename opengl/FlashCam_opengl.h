@@ -35,8 +35,8 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************/
 
-#ifndef FlashCamEGL_h
-#define FlashCamEGL_h
+#ifndef FlashCam_opengl_h
+#define FlashCam_opengl_h
 
 #include "types.h"
 
@@ -51,7 +51,7 @@
 #include "interface/mmal/util/mmal_connection.h"
 
 
-namespace FlashCamEGL {
+namespace FlashCamOpenGL {
     
     typedef struct {
         bool                        update;             // worker action: update texture
@@ -80,4 +80,4 @@ namespace FlashCamEGL {
     void destroy();    
 }
 
-#endif /* FlashCamEGL_h */
+#endif /* FlashCam_opengl_h */
