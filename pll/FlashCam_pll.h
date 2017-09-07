@@ -40,34 +40,22 @@
 
 #include "FlashCam_types.h"
 
-class FlashCamPLL
-{
-    
-private:
-    bool                    _error  = false;
-    bool                    _active = false;
-    
-    //Reset GPIO & PWM 
-    void resetGPIO();
-    
-    //reset PLL parameters
-    void clearParams();
-public:       
-    // Constructor / Destructor
-    FlashCamPLL();
-    ~FlashCamPLL();
+namespace FlashCamPLL {
+
+    void init(FLASHCAM_INTERNAL_STATE_T *state);
+    void destroy();    
 
     //start/stop PLL mechanism. Functions are invoked when camera is started/stopped in FlashCam.
     int start( MMAL_PORT_T *videoport, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
     int stop( FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params );
     
     //update Lock. This function is a callback from FlashCam when a frame is recieved.
-    static int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t pts);
+    int update(MMAL_PORT_T *port, FLASHCAM_SETTINGS_T *settings, FLASHCAM_PARAMS_T *params, uint64_t pts);
     
     //settings..
-    static void getDefaultSettings( FLASHCAM_SETTINGS_T *settings );
-    static void printSettings( FLASHCAM_SETTINGS_T *settings );    
-};
+    void getDefaultSettings( FLASHCAM_SETTINGS_T *settings );
+    void printSettings( FLASHCAM_SETTINGS_T *settings );    
 
+}
 
 #endif /* FlashCam_pll_h */

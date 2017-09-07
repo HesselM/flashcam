@@ -193,8 +193,19 @@ typedef struct {
  * PLL results and test data. Only user for intern-tracking
  */
 typedef struct { 
+    //values managed by FlashCam.cpp
+    MMAL_PORT_T         *port;
+    FLASHCAM_SETTINGS_T *settings;
+    FLASHCAM_PARAMS_T   *params;
     
+    
+    
+    //values managed by FlashCam_pll.cpp
 #ifdef BUILD_FLASHCAM_WITH_PLL  
+    bool pll_active;
+    bool pll_error;
+    bool pll_initialised;
+    
     //timing
     float framerate;                        // User set target framerate of camera.
     float pwm_period;                       // Period of the set PWM signal in microseconds. 

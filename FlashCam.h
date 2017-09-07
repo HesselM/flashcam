@@ -70,9 +70,11 @@ private:
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
     MMAL_QUEUE_T               *_opengl_queue       = NULL;
 #endif
-#ifdef BUILD_FLASHCAM_WITH_PLL
-    FlashCamPLL                 _PLL;
-#endif
+//#ifdef BUILD_FLASHCAM_WITH_PLL
+//    FlashCamPLL                 _PLL;
+//#endif
+    
+    FLASHCAM_INTERNAL_STATE_T   _state;
     
     //Camera setup functions
     int resetCamera();
