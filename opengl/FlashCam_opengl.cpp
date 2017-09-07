@@ -47,38 +47,40 @@
 
 
 namespace FlashCamOpenGL {
-    
-    //internal-struct tracking the state of all OpenGL / EGL threads, settings, etc.
-    static FLASHCAM_EGL_t state;
         
+    //private & static parameterlist
+    static FLASHCAM_INTERNAL_STATE_T *_state;
+
     //worker thread: processed captured frames
     static void *worker(void *arg) {
-        FLASHCAM_EGL_t* state = (FLASHCAM_EGL_t*) arg;
+        FLASHCAM_INTERNAL_STATE_T* state = (FLASHCAM_INTERNAL_STATE_T*) arg;
         
         MMAL_BUFFER_HEADER_T *buffer;
         MMAL_STATUS_T status;
         
         //init OpenGL
-        initOpenGL(state);
+        FlashCamUtilOpenGL::init(state->settings->width, state->settings->height);
+        //init texture;
+        state->opengl_tex_id = FlashCamUtilOpenGL::generateTexture(GL_TEXTURE_EXTERNAL_OES);
         
         // process buffer
-        while (!state->stop) {
+        while (!state->opengl_worker_stop) {
             
             //wait for update
             vcos_semaphore_wait(&(state->userdata->sem_capture));
             
             // Do we need to continue or are we done?
             // --> as we are using countin-semaphores, only process a single buffer
-            if ((!state->stop) && ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)) {      
+            if ((!state->opengl_worker_stop) && ((buffer = mmal_queue_get(state->userdata->opengl_queue)) != NULL)) {      
                 
                 mmal_buffer_header_mem_lock(buffer);
 
                 // OPAQUE ==> TEXTURE
-                mmalbuf2TextureOES_internal(buffer);
+                FlashCamUtilOpenGL::mmalbuf2TextureOES(buffer, state->opengl_tex_id, &(state->opengl_tex_data));
                 
                 //callback user..
                 if (state->userdata->callback_egl)
-                    state->userdata->callback_egl( state->texture, &(state->img) , state->userdata->settings->width , state->userdata->settings->height);
+                    state->userdata->callback_egl( state->opengl_tex_id, &(state->opengl_tex_data), state->userdata->settings->width, state->userdata->settings->height);
                 
                 //unlock & release buffer
                 mmal_buffer_header_mem_unlock(buffer);
@@ -99,47 +101,48 @@ namespace FlashCamOpenGL {
     }
     
     
-    int init() {
+    int init(FLASHCAM_INTERNAL_STATE_T *state) {
         fprintf(stdout, "EGL:init..\n");
 
+        //when initialised, return.
+    //    if (state->opengl_initialised)
+     //       return;
+        FlashCamOpenGL::_state = state;
+        
         //setup videocore-logging and semaphores
         bcm_host_init();
-
-        VCOS_STATUS_T status;
         vcos_init();
-
         vcos_log_register("FlashCam-EGL", VCOS_LOG_CATEGORY);
         vcos_log_set_level(VCOS_LOG_CATEGORY, VCOS_LOG_INFO); //VCOS_LOG_WARN
         vcos_log_trace("%s", VCOS_FUNCTION);
+        
+       // FlashCamOpenGL::_state->opengl_initialised = true;
         return 0;
     }
     
     
     
-    int start(MMAL_PORT_T *port, FLASHCAM_PORT_USERDATA_T *userdata) {
+    int start() {
         VCOS_STATUS_T status;
 
         fprintf(stdout, "EGL:starting..\n");
 
         //set basic settings
-        FlashCamOpenGL::state.stop     = false;
-        FlashCamOpenGL::state.update   = true;
-        FlashCamOpenGL::state.port     = port;
-        FlashCamOpenGL::state.userdata = userdata;
-        FlashCamOpenGL::state.img      = EGL_NO_IMAGE_KHR;
+        FlashCamOpenGL::_state->opengl_worker_stop  = false;
+        FlashCamOpenGL::_state->opengl_tex_id       = 0;
+        FlashCamOpenGL::_state->opengl_tex_data     = EGL_NO_IMAGE_KHR;
                         
         //clear queue..
         fprintf(stdout, "- resetting queue..\n");
-        while (mmal_queue_get(FlashCamOpenGL::state.userdata->opengl_queue) != NULL);                
+        while (mmal_queue_get(FlashCamOpenGL::_state->userdata->opengl_queue) != NULL);                
 
         //reset semaphore
         fprintf(stdout, "- resetting semaphore..\n");
-        while (vcos_semaphore_trywait(&(FlashCamOpenGL::state.userdata->sem_capture)) != VCOS_EAGAIN);
-        
+        while (vcos_semaphore_trywait(&(FlashCamOpenGL::_state->userdata->sem_capture)) != VCOS_EAGAIN);
         
         //start worker thread
         fprintf(stdout, "- starting worker..\n");
-        status = vcos_thread_create(&(FlashCamOpenGL::state.worker_thread), "FlashCamOpenGL-worker", NULL, FlashCamOpenGL::worker, &(FlashCamOpenGL::state));
+        status = vcos_thread_create( &(FlashCamOpenGL::_state->opengl_worker_thread), "FlashCamOpenGL-worker", NULL, FlashCamOpenGL::worker, FlashCamOpenGL::_state);
         if (status != VCOS_SUCCESS)
             vcos_log_error("%s: Failed to start `FlashCamOpenGL-worker` (%d)", VCOS_FUNCTION, status);
 
@@ -156,22 +159,23 @@ namespace FlashCamOpenGL {
         fprintf(stdout, "EGL:stopping..\n");
         
         // STOP SIGNAL
-        if (!FlashCamOpenGL::state.stop) {
+        if (!FlashCamOpenGL::_state->opengl_worker_stop) {
             //vcos_log_trace("Stopping GL preview");
             fprintf(stdout, "- worker is running\n");
 
             //notify worker we are done. 
             //  As the worker blocks due to the sempahore, we need to set the status and post an update
-            FlashCamOpenGL::state.stop = true;
-            vcos_semaphore_post(&(FlashCamOpenGL::state.userdata->sem_capture));
+            FlashCamOpenGL::_state->opengl_worker_stop = true;
+            vcos_semaphore_post(&(FlashCamOpenGL::_state->userdata->sem_capture));
             
             fprintf(stdout, "- Waiting for worker\n");
 
             //Wait for worker to terminate.
-            vcos_thread_join(&(FlashCamOpenGL::state.worker_thread), NULL);
+            vcos_thread_join(&(FlashCamOpenGL::_state->opengl_worker_thread), NULL);
             
             //clear OpenGL
-            FlashCamOpenGL::clearOpenGL();
+            FlashCamUtilOpenGL::destroyEGLImage(&(FlashCamOpenGL::_state->opengl_tex_data));            
+            FlashCamUtilOpenGL::destroy();
         
             fprintf(stdout, "- Done\n");
         }

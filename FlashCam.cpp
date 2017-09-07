@@ -193,7 +193,7 @@ int FlashCam::setupComponents() {
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
     _userdata.callback_egl      = NULL;
     _userdata.opengl_queue      = NULL;
-    FlashCamOpenGL::init();
+    FlashCamOpenGL::init(&_state);
 #endif    
     
     //Status flags
@@ -713,53 +713,48 @@ int FlashCam::startCapture() {
     if (_settings.verbose)
         fprintf(stdout, "%s: Starting capture\n", __func__);
 
+    //update state
+    _state.settings = &_settings;
+    _state.params   = &_params;
+    _state.userdata = &_userdata;
+
+    if (_settings.mode == FLASHCAM_MODE_VIDEO) {
+        _state.port = _camera_component->output[MMAL_CAMERA_VIDEO_PORT];
+    } else if ( _settings.mode = FLASHCAM_MODE_CAPTURE ) { 
+        _state.port = _camera_component->output[MMAL_CAMERA_CAPTURE_PORT];
+    } else {
+        fprintf(stderr, "%s: Cannot start camera. Unknown mode (%u)\n", __func__, _settings.mode);
+        return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
+    }
+    
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
     //start EGL thread for processing
     if (_settings.useOpenGL) {
-        FlashCamOpenGL::start(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], &_userdata);
+        FlashCamOpenGL::start();
     }
 #endif 
         
-    if (_settings.mode == FLASHCAM_MODE_VIDEO) {
-        
 #ifdef BUILD_FLASHCAM_WITH_PLL
-        _state.port     = _camera_component->output[MMAL_CAMERA_VIDEO_PORT];
-        _state.settings = &_settings;
-        _state.params   = &_params;
-        
+    if (_settings.mode == FLASHCAM_MODE_VIDEO) {        
         if (FlashCamPLL::start()) {
             fprintf(stderr, "%s: PLL cannot be started.\n", __func__);
             return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
         }
+    }
 #endif
+     
+    //start camera
+    if (status = setCapture(_state.port, 1)) {
+        vcos_log_error("%s: Failed to start video stream", __func__);
+        return status;
+    }    
+    _active = true;
         
-        if (status = setCapture(_camera_component->output[MMAL_CAMERA_VIDEO_PORT], 1)) {
-            vcos_log_error("%s: Failed to start video stream", __func__);
-            return status;
-        }
-        
-        //starting stream
-        _active = true;
-        
-    } else if ( _settings.mode = FLASHCAM_MODE_CAPTURE ) { 
-        
-        if (status = setCapture(_camera_component->output[MMAL_CAMERA_CAPTURE_PORT], 1)) {
-            vcos_log_error("%s: Failed to start capture", __func__);
-            return status;
-        }
-        
-        // Wait for capture to complete
-        // For some reason using vcos_semaphore_wait_timeout sometimes returns immediately with bad parameter error
-        // even though it appears to be all correct, so reverting to untimed one until figure out why its erratic
-        _active = true;
+    // When in capturemode: Wait for capture to complete
+    if ( _settings.mode == FLASHCAM_MODE_CAPTURE ) { 
         vcos_semaphore_wait(&_userdata.sem_capture);
         _active = false;
-    
-    } else {
-        //unknown mode..
-        fprintf(stderr, "%s: Cannot start camera. Unknown mode (%u)\n", __func__, _settings.mode);
-        return FlashCamMMAL::mmal_to_int(MMAL_EINVAL);
-    }
+    } 
     
     if (_settings.verbose)
         fprintf(stdout, "%s: Success\n", __func__);
@@ -883,11 +878,9 @@ void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
 }
 
 #ifdef PLLTUNE
-#ifdef PLLTUNE
 void FlashCam::getInternalState( FLASHCAM_INTERNAL_STATE_T** state ) {
     *state = &_state;
 }
-#endif
 #endif
 
 int FlashCam::setSettings(FLASHCAM_SETTINGS_T *settings) {

@@ -54,17 +54,19 @@
 #define  eglcheck() assert(glGetError() == 0)
 #define reglcheck() assert(EGL_FALSE != result)
 
-namespace FlashCamOpenGL {
+namespace FlashCamUtilOpenGL {
     
-    //initialize OpenGL
-    void initOpenGL(FLASHCAM_EGL_t* state);
-    void clearOpenGL();
+    //initialize/stop OpenGL for use with FlashCam lib.
+    void init(int w, int h);    
+    
+    void destroyEGLImage(EGLImageKHR *targetimg);
+    void destroy();
     
     //transform a MMAL-buffer into a OpenGL texture.
     // ==> Used internal state representation. 
     //      Result is given via UserCall-back. 
     //      See FlashCam_test_vid_opengl_framecapture.cpp
-    void mmalbuf2TextureOES_internal(MMAL_BUFFER_HEADER_T *buffer);
+    void mmalbuf2TextureOES(MMAL_BUFFER_HEADER_T *buffer, GLuint targetid, EGLImageKHR *targetimg);
     
     //transform OES texture (=Lumiance only) to RGB
     void textureOES2rgb(GLuint input_texid, GLuint result_texid);
@@ -76,6 +78,8 @@ namespace FlashCamOpenGL {
     //generate new texture. Texture-ID is returned.
     GLuint createTexture();
     
+    GLuint generateTexture(GLenum type);
+
     //print OpenGL errors (if existing)
     void eglDispError();
 }

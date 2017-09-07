@@ -194,11 +194,10 @@ typedef struct {
  */
 typedef struct { 
     //values managed by FlashCam.cpp
-    MMAL_PORT_T         *port;
-    FLASHCAM_SETTINGS_T *settings;
-    FLASHCAM_PARAMS_T   *params;
-    
-    
+    MMAL_PORT_T                 *port;
+    FLASHCAM_SETTINGS_T         *settings;
+    FLASHCAM_PARAMS_T           *params;
+    FLASHCAM_PORT_USERDATA_T    *userdata;
     
     //values managed by FlashCam_pll.cpp
 #ifdef BUILD_FLASHCAM_WITH_PLL  
@@ -241,7 +240,6 @@ typedef struct {
     float pll_error_avg_std_sum;                        // sum of contents of `error_avg_std[]`
     float pll_error_avg_std[FLASHCAM_PLL_SAMPLES];      // Circular buffer. Holds the standard deviation of `error_avg[]`
                                                         //      Used to determine stability. When (close to) zero, error-variation is constant.  
-    
 #ifdef PLLTUNE
     float P;
     float I;
@@ -257,6 +255,15 @@ typedef struct {
     
 #endif /* BUILD_FLASHCAM_WITH_PLL */
 
+    
+    //values managed by FlashCam_pll.cpp
+#ifdef BUILD_FLASHCAM_WITH_OPENGL  
+    bool            opengl_worker_stop;     // worker action: terminate
+    VCOS_THREAD_T   opengl_worker_thread;   // Thread processing queue
+    //MMAL texture result
+    GLuint          opengl_tex_id;          // Target Texture
+    EGLImageKHR     opengl_tex_data;        // Target EGLImage
+#endif /* BUILD_FLASHCAM_WITH_OPENGL */
     
 } FLASHCAM_INTERNAL_STATE_T;
 

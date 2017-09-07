@@ -52,32 +52,12 @@
 
 
 namespace FlashCamOpenGL {
-    
-    typedef struct {
-        bool                        update;             // worker action: update texture
-        bool                        stop;               // worker action: terminate
-        MMAL_PORT_T                 *port;              // Video port reference
-        FLASHCAM_PORT_USERDATA_T    *userdata;          // Reference to userdata
-        VCOS_THREAD_T               worker_thread;      // Thread processing queue
         
-        // texture/EGLImage to be written to
-        GLuint                      texture;            // Target Texture
-        EGLImageKHR                 img;                // Target EGLImage
-        
-        // Buffer used but EGLImage
-        MMAL_BUFFER_HEADER_T *buffer_img;
-        
-        //OpenGL settings
-        EGLDisplay display;                 /// The current EGL display
-        EGLSurface surface;                 /// The current EGL surface
-        EGLContext context;                 /// The current EGL context
-        
-    } FLASHCAM_EGL_t;
-    
-    int init();
-    int start(MMAL_PORT_T *port, FLASHCAM_PORT_USERDATA_T *userdata);
-    void stop();
+    int init(FLASHCAM_INTERNAL_STATE_T *state);
     void destroy();    
+    
+    int start();
+    void stop();
 }
 
 #endif /* FlashCam_opengl_h */
