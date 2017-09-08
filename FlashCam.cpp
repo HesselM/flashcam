@@ -593,7 +593,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                     //push buffer to OpenGL queue for processing
                     mmal_queue_put(userdata->opengl_queue, &glb->glb_mmal_buffer);
                     
-                    fprintf(stdout, "%s: Posting...\n", __func__);
+                    //fprintf(stdout, "%s: Posting...\n", __func__);
                     vcos_semaphore_post(&(userdata->sem_capture));
 
                     //buffer released by OpenGL worker.
@@ -850,7 +850,7 @@ void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_T callback) {
 }
 
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
-void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback) {
+void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_OPENGL_T callback) {
     if (_active) return; //no changer/reset while in capturemode
     _userdata.callback_egl = callback;
 }

@@ -36,6 +36,7 @@ namespace FlashCamUtilOpenGL {
     
     static bool initialised         = false;
     
+    static FLASHCAM_CALLBACK_OPENGL_DESTROY_T _callback;
     
     // 2D vertex shader.    
 #define SRC_VSHADER_2D \
@@ -100,7 +101,7 @@ namespace FlashCamUtilOpenGL {
 
     
     //Source: http://www.nexcius.net/2012/11/20/how-to-load-a-glsl-shader-in-opengl-using-c/
-    GLuint loadShader(std::string v, std::string f) {        
+    GLuint createShaderProgram(std::string v, std::string f) {        
         GLuint vertShader = glCreateShader(GL_VERTEX_SHADER);
         GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
         
@@ -261,13 +262,14 @@ namespace FlashCamUtilOpenGL {
         
         //Load Shaders
         //load program/buffers upon first call
-        FlashCamUtilOpenGL::progid_oes2rgb  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
-        FlashCamUtilOpenGL::progid_rgbblur  = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
-        FlashCamUtilOpenGL::progid_rgbsobel = loadShader(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
+        FlashCamUtilOpenGL::progid_oes2rgb  = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
+        FlashCamUtilOpenGL::progid_rgbblur  = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
+        FlashCamUtilOpenGL::progid_rgbsobel = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
 
         //setup buffers
         FlashCamUtilOpenGL::vbufid         = loadVertixBuffer();   
         FlashCamUtilOpenGL::fbufid         = loadFrameBuffer();  
+        FlashCamUtilOpenGL::_callback      = NULL;
         
         FlashCamUtilOpenGL::initialised = true;
     }
@@ -291,7 +293,6 @@ namespace FlashCamUtilOpenGL {
         //destroy textures
         for (std::vector<GLuint>::iterator it = FlashCamUtilOpenGL::textures.begin() ; it != FlashCamUtilOpenGL::textures.end(); ++it)
             glDeleteTextures(1, (GLuint*) &*it);
-
         
         //destroy buffers;
         glDeleteFramebuffers(1, &fbufid);
@@ -299,6 +300,9 @@ namespace FlashCamUtilOpenGL {
         glDeleteProgram(progid_oes2rgb);
         glDeleteProgram(progid_rgbblur);
         glDeleteProgram(progid_rgbsobel);
+        
+        if (FlashCamUtilOpenGL::_callback)
+            FlashCamUtilOpenGL::_callback();
         
         //detroy openGL
         eglMakeCurrent(FlashCamUtilOpenGL::_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -312,7 +316,8 @@ namespace FlashCamUtilOpenGL {
     
     //transform a MMAL-buffer into a OpenGL texture.
     void mmalbuf2TextureOES(MMAL_BUFFER_HEADER_T *buffer, GLuint targetid, EGLImageKHR *targetimg) {
-        
+        glBindFramebuffer(GL_FRAMEBUFFER, FlashCamUtilOpenGL::fbufid); eglcheck();
+
         //set texture id
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, targetid); eglcheck();
         
@@ -330,6 +335,7 @@ namespace FlashCamUtilOpenGL {
         eglcheck();
         
         //Scaling: nearest (=no) interpolation for scaling down and up.
+        // Also disables mipmapping
         glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);eglcheck();
         glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_NEAREST);eglcheck();
         
@@ -424,9 +430,17 @@ namespace FlashCamUtilOpenGL {
         return id;
     }
 
-    
+    FLASHCAM_OPENGL_STATE_T getOpenGLState( FLASHCAM_CALLBACK_OPENGL_DESTROY_T callback) {
+        _callback = callback;        
+        FLASHCAM_OPENGL_STATE_T s;
+        s.default_width     = _width;
+        s.default_height    = _height;
+        s.display           = _display;
+        s.surface           = _surface;
+        s.context           = _context;
+        return s;
+    }
 
-    
     void eglDispError() {
         EGLint err = eglGetError();
         if (err != EGL_SUCCESS) {

@@ -83,7 +83,7 @@ typedef enum {
 //  - int height            : height of image
 typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
-typedef void (*FLASHCAM_CALLBACK_EGL_T) (GLuint texid, int w, int h, uint64_t pts, bool pll_state);
+typedef void (*FLASHCAM_CALLBACK_OPENGL_T) (GLuint texid, int w, int h, uint64_t pts, bool pll_state);
 #endif
 
 
@@ -163,7 +163,7 @@ typedef struct {
     FLASHCAM_CALLBACK_T      callback;          // Callback to user function
 #ifdef BUILD_FLASHCAM_WITH_OPENGL  
     MMAL_QUEUE_T            *opengl_queue;      // Pointer to OpenGL Queue
-    FLASHCAM_CALLBACK_EGL_T  callback_egl;      // OpenGL Callback to user function
+    FLASHCAM_CALLBACK_OPENGL_T  callback_egl;      // OpenGL Callback to user function
 #endif
 } FLASHCAM_PORT_USERDATA_T;
 

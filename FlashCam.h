@@ -118,7 +118,7 @@ public:
     //callback options --> for when a full frame is received
     void setFrameCallback(FLASHCAM_CALLBACK_T callback);
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
-    void setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback);
+    void setFrameCallback(FLASHCAM_CALLBACK_OPENGL_T callback);
 #endif
     void resetFrameCallback();
         

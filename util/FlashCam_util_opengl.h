@@ -41,6 +41,8 @@
 #include "FlashCam_types.h"
 #include "FlashCam_opengl.h"
 
+#include <string>
+
 #include <GLES/gl.h>
 #include <GLES/glext.h>
 #include "GLES2/gl2.h"
@@ -56,6 +58,18 @@
 
 namespace FlashCamUtilOpenGL {
     
+    typedef struct {
+        unsigned int default_width;
+        unsigned int default_height;
+        EGLDisplay display;
+        EGLSurface surface;
+        EGLContext context;
+    } FLASHCAM_OPENGL_STATE_T;
+    
+    
+    //user callback
+    typedef void (*FLASHCAM_CALLBACK_OPENGL_DESTROY_T) (void);
+
     //initialize/stop OpenGL for use with FlashCam lib.
     void init(int w, int h);    
     bool isInitialised();
@@ -78,8 +92,14 @@ namespace FlashCamUtilOpenGL {
 
     //generate new texture. Texture-ID is returned.
     GLuint createTexture();
-    
     GLuint generateTexture(GLenum type);
+
+    //Retrieve OpenGL state parameter to allow user-defined framebuffers and all.
+    // This however requires a call back in case of OpenGL being deinitialised, requiring existing textures and objects to be released.
+    FLASHCAM_OPENGL_STATE_T getOpenGLState( FLASHCAM_CALLBACK_OPENGL_DESTROY_T callback);
+    
+    //create a shader program of a vertics & fragment shader.
+    GLuint createShaderProgram(std::string v, std::string f);    
 
     //print OpenGL errors (if existing)
     void eglDispError();
