@@ -18,11 +18,11 @@
 
 namespace FlashCamUtilOpenGL {
         
-    static GLuint progid_oes2rgb;
-    static GLuint progid_rgbblur;
-    static GLuint progid_rgbsobel;
-    static GLuint vbufid;
-    static GLuint fbufid;
+    static GLuint progid_oes2rgb    = 0;
+    static GLuint progid_rgbblur    = 0;
+    static GLuint progid_rgbsobel   = 0;
+    static GLuint vbufid            = 0;
+    static GLuint fbufid            = 0;
     
     static std::vector<GLuint> textures;
     
@@ -31,9 +31,10 @@ namespace FlashCamUtilOpenGL {
     static EGLSurface _surface;                 /// The current EGL surface
     static EGLContext _context;                 /// The current EGL context
     //size
-    static unsigned int _width;
-    static unsigned int _height;
+    static unsigned int _width      = 0;
+    static unsigned int _height     = 0;
     
+    static bool initialised         = false;
     
     
     // 2D vertex shader.    
@@ -170,6 +171,10 @@ namespace FlashCamUtilOpenGL {
     }
     
     void init(int w, int h) {        
+        //if already initialised: return.
+        if (FlashCamUtilOpenGL::initialised)
+            return;
+        
         FlashCamUtilOpenGL::_width  = w;
         FlashCamUtilOpenGL::_height = h;
         
@@ -262,8 +267,15 @@ namespace FlashCamUtilOpenGL {
 
         //setup buffers
         FlashCamUtilOpenGL::vbufid         = loadVertixBuffer();   
-        FlashCamUtilOpenGL::fbufid         = loadFrameBuffer();   
+        FlashCamUtilOpenGL::fbufid         = loadFrameBuffer();  
+        
+        FlashCamUtilOpenGL::initialised = true;
     }
+    
+    bool isInitialised() {
+        return FlashCamUtilOpenGL::initialised;
+    }
+
     
     void destroyEGLImage(EGLImageKHR *targetimg) {
         if (*targetimg != EGL_NO_IMAGE_KHR) {

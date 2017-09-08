@@ -53,7 +53,7 @@ namespace FlashCamPLL {
 
     // Update phase-lock computation. This function is called by FlashCam each time a frame is recieved
     //  The computation uses the internal-state structure to update the relevant lock-values
-    int update(uint64_t pts);
+    int update(uint64_t pts, bool *pll_state);
 
     //settings..
     void getDefaultSettings( FLASHCAM_SETTINGS_T *settings );

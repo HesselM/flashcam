@@ -566,8 +566,9 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
         // Are there bytes to write?
         if (buffer->length) {
 
+            bool pll_state = false;
 #ifdef BUILD_FLASHCAM_WITH_PLL
-            FlashCamPLL::update(buffer->pts);
+            FlashCamPLL::update(buffer->pts, &pll_state);
 #endif
             
             //OpenGL processing?
@@ -578,7 +579,19 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
                 
                 //push to queue, unlock buffer, update PLL and return.
                 if ( length + 1 < port->buffer_num) {
-                    mmal_queue_put(userdata->opengl_queue, buffer);
+                    
+                    // set FlashCam data in Buffer.
+                    FLASHCAM_OPENGL_BUF_T* glb = FlashCamOpenGL::getOpenGLBuffer();
+                    
+                    if (glb != NULL) {
+                        glb->pll_state = pll_state;
+                        glb->buffer    = buffer;
+                    } else {
+                        vcos_log_error("%s: No OpenGL buffer available in pool." , __func__);
+                   }
+                    
+                    //push buffer to OpenGL queue for processing
+                    mmal_queue_put(userdata->opengl_queue, &glb->glb_mmal_buffer);
                     
                     fprintf(stdout, "%s: Posting...\n", __func__);
                     vcos_semaphore_post(&(userdata->sem_capture));
@@ -846,6 +859,9 @@ void FlashCam::setFrameCallback(FLASHCAM_CALLBACK_EGL_T callback) {
 void FlashCam::resetFrameCallback() {
     if (_active) return; //no changer/reset while in capturemode
     _userdata.callback = NULL;
+#ifdef BUILD_FLASHCAM_WITH_OPENGL
+    _userdata.callback_egl = NULL;
+#endif 
 }
 
 

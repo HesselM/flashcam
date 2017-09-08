@@ -58,6 +58,7 @@ namespace FlashCamUtilOpenGL {
     
     //initialize/stop OpenGL for use with FlashCam lib.
     void init(int w, int h);    
+    bool isInitialised();
     
     void destroyEGLImage(EGLImageKHR *targetimg);
     void destroy();

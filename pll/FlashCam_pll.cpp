@@ -134,9 +134,10 @@ namespace FlashCamPLL {
         pwmWrite(PLL_PIN, 0);    
     }
 
-    int update(uint64_t pts) {
+    int update(uint64_t pts, bool *pll_state) {
         //copy pointer to local var: increases readability!
         FLASHCAM_INTERNAL_STATE_T *state = FlashCamPLL::_state;
+        *pll_state = false;
         
         if (state->settings->pll_enabled) {
             
@@ -226,6 +227,8 @@ namespace FlashCamPLL {
     #endif
             
     // STABILITY COMPUTATION
+            
+#ifdef PLLTUNE
             unsigned int error_idx_jitter = state->pll_error_idx_jitter;
             unsigned int error_idx_sample = state->pll_error_idx_sample;
             // - error
@@ -253,6 +256,7 @@ namespace FlashCamPLL {
             }
             state->pll_error_avg_std[error_idx_sample]       = sqrt(state->pll_error_avg_std[error_idx_sample] / (float) FLASHCAM_PLL_SAMPLES);
             state->pll_error_avg_std_sum                    += state->pll_error_avg_std[error_idx_sample] ; 
+#endif
             
     // PID UPDATE
             state->pll_integral += ((dt_frametime_gpu/1000.0f) * 0.5 * (error + state->pll_last_error));
@@ -264,12 +268,15 @@ namespace FlashCamPLL {
             state->pll_pid_framerate += D * (error - state->pll_last_error);
             
             //iteration update
+#ifdef PLLTUNE
             state->pll_error_avg_last           = state->pll_error_avg[error_idx_sample] ;
             state->pll_error_avg_dt_last        = state->pll_error_avg_dt[error_idx_sample] ;
             state->pll_error_avg_dt_avg_last    = state->pll_error_avg_dt_avg[error_idx_sample] ;
             state->pll_error_avg_std_last       = state->pll_error_avg_std[error_idx_sample] ;
             state->pll_error_idx_jitter         = (state->pll_error_idx_jitter + 1) % FLASHCAM_PLL_JITTER;
             state->pll_error_idx_sample         = (state->pll_error_idx_sample + 1) % FLASHCAM_PLL_SAMPLES;
+#endif
+
             state->pll_last_error               = error;
             state->pll_last_error_us            = error_us;
 

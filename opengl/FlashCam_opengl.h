@@ -58,6 +58,13 @@ namespace FlashCamOpenGL {
     
     int start();
     void stop();
+    
+    
+    //after init, these functions can be used:
+    void initOpenGLBufferPool();
+    void destroyOpenGLBufferPool();    
+    //try to get a buffer. Return NULL if none are available
+    FLASHCAM_OPENGL_BUF_T* getOpenGLBuffer();
 }
 
 #endif /* FlashCam_opengl_h */

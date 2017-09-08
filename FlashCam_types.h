@@ -43,6 +43,7 @@
 #include "interface/mmal/mmal_logging.h"
 
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
+#include <vector>
 #include "GLES2/gl2.h"
 #include "EGL/egl.h"
 #include "EGL/eglext.h"
@@ -169,15 +170,30 @@ typedef struct {
 
 
 
+/*
+ * Structure used to add user data to the MMAL_HEADER_BUFFER which is passed to the FlashCamOpenGL functions
+ *  While a MMAL_HEADER_BUFFER allows setting a pointer to user_data, the MMAL usage on the RPi uses this to pass
+ *   around OMX data pointers, hence we cannot used it. Therefore, FlashCamOpenGL creates a pool of FlashCamBuffers
+ *   in which the actual frame data is stored. As the communication between FlashCam and the FlashCamOpenGL-worker thread
+ *   works via the thread-safe mmal_queue implementation, a little hack is applied to ensure the below defined structure
+ *   can be passed in the mmal_queu:  each structure holds a pointer to the actual frame and a fixed alloaction of a queue-buffer.
+ *   This `queuebuf` is initialised with user_data, pointing the a OpenGLBuf-structure in which it is allocated, so, when 
+ *   pushing it into the queue, we can retrieve the actual frame data, while tracking our own parameters.
+ */
 
 
-
-
-
-
-
-
-
+#ifdef BUILD_FLASHCAM_WITH_OPENGL  
+typedef struct {
+    MMAL_BUFFER_HEADER_T  glb_mmal_buffer;      // glb_mmal_buffer = &FLASHCAM_OPENGL_BUF_T
+                                                // so in essence: glb_mmal_buffer == glb_mmal_buffer.user_data->glb_mmal_buffer
+    VCOS_SEMAPHORE_T      lock;                 // Buffer locked?
+    MMAL_BUFFER_HEADER_T *buffer;               // Frame data
+    unsigned int          id;
+#ifdef BUILD_FLASHCAM_WITH_PLL  
+    bool                  pll_state;            // PLL active in frame?
+#endif
+} FLASHCAM_OPENGL_BUF_T;
+#endif
 
 
 //Number of samples for the array's for error estimations
@@ -263,6 +279,7 @@ typedef struct {
     //MMAL texture result
     GLuint          opengl_tex_id;          // Target Texture
     EGLImageKHR     opengl_tex_data;        // Target EGLImage
+    std::vector<FLASHCAM_OPENGL_BUF_T>      opengl_buffer_pool;
 #endif /* BUILD_FLASHCAM_WITH_OPENGL */
     
 } FLASHCAM_INTERNAL_STATE_T;

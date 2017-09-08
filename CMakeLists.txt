@@ -36,7 +36,7 @@ link_directories( ${BCMHOST_LIBRARY_DIRS} )
 
 
 # EGL -> optional (required for OpenGL rendering)
-pkg_search_module(EGL REQUIRED egl)
+pkg_search_module(EGL egl)
 if (EGL_FOUND) 
     include_directories(${EGL_INCLUDE_DIRS})
     link_directories(${EGL_LIBRARY_DIRS} )
@@ -164,6 +164,3 @@ message(">> Used CXX flags: \n ${PRETTY_CMAKE_CXX_FLAGS}")
 message(">> Used C flags: \n ${PRETTY_CMAKE_C_FLAGS}")
 message(">> Source List: \n ${PRETTY_FLASHCAM_SOURCES}")
 
-
-
-# list(REMOVE_DUPLICATES <list>
