@@ -206,6 +206,16 @@ namespace FlashCamPLL {
             int64_t error_us = (frametime_gpu - last_pulsetime_gpu) + state->settings->pll_offset + 0.5*state->pll_startinterval_gpu;
             float error      = error_us / frame_period;
             
+            
+            //Determine if laser was activated in current frame
+            uint32_t state_k = ((frametime_gpu - state->pll_starttime_gpu) / state->pll_pwm_period );
+            uint64_t state_last_pulsetime_gpu = state->pll_starttime_gpu + (uint64_t)(state_k * state->pll_pwm_period);
+            int64_t  state_error_us = (frametime_gpu - state_last_pulsetime_gpu) + state->settings->pll_offset + 0.5*state->pll_startinterval_gpu;
+            if (state_error_us == error_us)
+                *pll_state = true;
+            
+            
+            
             // if error > 50%
             //  --> captured image is too early: pulse for frame is in the future. 
             //    --> So assume we are correcting for the future-pulse
@@ -213,7 +223,7 @@ namespace FlashCamPLL {
                 error    = error - 1;
                 error_us = error * frame_period;
             }
-        
+                    
             //update framerate
     #ifdef PLLTUNE
             float P = state->P;

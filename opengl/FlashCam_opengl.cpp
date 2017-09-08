@@ -85,7 +85,7 @@ namespace FlashCamOpenGL {
                 
                 //callback user..
                 if (state->userdata->callback_egl)
-                    state->userdata->callback_egl( state->opengl_tex_id, &(state->opengl_tex_data), state->userdata->settings->width, state->userdata->settings->height);
+                    state->userdata->callback_egl( state->opengl_tex_id, state->userdata->settings->width, state->userdata->settings->height, buffer->pts, glb->pll_state);
                 
                 
                 //release opengl buffer back to pool

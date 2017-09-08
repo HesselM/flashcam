@@ -83,7 +83,7 @@ typedef enum {
 //  - int height            : height of image
 typedef void (*FLASHCAM_CALLBACK_T) (unsigned char *, int, int);
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
-typedef void (*FLASHCAM_CALLBACK_EGL_T) (GLuint texid, EGLImageKHR *img, int w, int h);
+typedef void (*FLASHCAM_CALLBACK_EGL_T) (GLuint texid, int w, int h, uint64_t pts, bool pll_state);
 #endif
 
 
