@@ -90,10 +90,19 @@ namespace FlashCamUtilOpenGL {
     //Apply-shader program to texture and fetch result as texture.
     void texture2texture(GLuint input_texid, GLenum input_target,  GLuint result_texid, GLuint progid);   
 
-    //generate new texture. Texture-ID is returned.
-    GLuint createTexture();
-    GLuint generateTexture(GLenum type);
 
+    // request & bind OpenCL texture with given type.
+    // Note: this does not do any initialisation. ID is returned.
+    GLuint generateTexture(GLenum type);
+    
+    //create RGBA TEXTURE_2D image with size `default_width` x `default_height` and RGBA8 internal format.
+    // Note: no data is assigned; ID is returned.
+    GLuint createTexture();
+    
+    //create RGBA texture with specified width, height and internal dataformat.
+    // Note: no data is assigned; ID is returned.
+    GLuint createTexture(int w, int h, GLenum dataformat);
+    
     //Retrieve OpenGL state parameter to allow user-defined framebuffers and all.
     // This however requires a call back in case of OpenGL being deinitialised, requiring existing textures and objects to be released.
     FLASHCAM_OPENGL_STATE_T getOpenGLState( FLASHCAM_CALLBACK_OPENGL_DESTROY_T callback);

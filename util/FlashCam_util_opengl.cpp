@@ -414,6 +414,12 @@ namespace FlashCamUtilOpenGL {
     }
         
     GLuint createTexture() {
+        int w = FlashCamUtilOpenGL::_width;
+        int h = FlashCamUtilOpenGL::_height;
+        return createTexture(w, h, GL_RGBA); 
+    }
+
+    GLuint createTexture(int w, int h, GLenum dataformat) {
         GLuint id = generateTexture(GL_TEXTURE_2D);
         //Scaling: nearest (=no) interpolation for scaling down and up.
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);eglcheck();
@@ -421,15 +427,13 @@ namespace FlashCamUtilOpenGL {
         //Wrapping: repeat. Only use (s,t) as we are using a 2D texture
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);eglcheck();
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);eglcheck();
-        
-        int width  = FlashCamUtilOpenGL::_width;
-        int height = FlashCamUtilOpenGL::_height;
-        
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL); eglcheck();
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, dataformat, GL_UNSIGNED_BYTE, NULL); eglcheck();
         
         return id;
     }
-
+    
+    
+    
     FLASHCAM_OPENGL_STATE_T getOpenGLState( FLASHCAM_CALLBACK_OPENGL_DESTROY_T callback) {
         _callback = callback;        
         FLASHCAM_OPENGL_STATE_T s;

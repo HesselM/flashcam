@@ -136,7 +136,7 @@ int main(int argc, const char **argv) {
     settings.sensormode=SENSORMODE;
     
     //Use OpenGL
-    settings.useOpenGL=1;
+    settings.opengl_enabled=1;
     
     //create camera with params
     FlashCam::get().setSettings( &settings );

@@ -347,7 +347,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
     
     //Video format ==> same as Preview, except for encoding (YUV!)
     format = video_port->format;
-    if (_settings.useOpenGL) {
+    if (_settings.opengl_enabled) {
         //For openGL we require the OPAQUE (= special GPU format) encoding.
         format->encoding                = MMAL_ENCODING_OPAQUE;
     } else {
@@ -370,7 +370,7 @@ MMAL_STATUS_T FlashCam::setupComponentCamera() {
      * The opaque handle is resolved on VideoCore by the GL driver when the EGL
      * image is created.
      */
-    if (_settings.useOpenGL) {
+    if (_settings.opengl_enabled) {
         if ((status = mmal_port_parameter_set_boolean(video_port, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE)) != MMAL_SUCCESS ) {
             vcos_log_error("%s: Failed to enable zero copy on video port (%u)", __func__, status);
             destroyComponents();        
@@ -572,7 +572,7 @@ void FlashCam::buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) 
 #endif
             
             //OpenGL processing?
-            if (userdata->settings->useOpenGL) {
+            if (userdata->settings->opengl_enabled) {
 #ifdef BUILD_FLASHCAM_WITH_OPENGL      
                 unsigned int length = mmal_queue_length(userdata->opengl_queue);
                 //fprintf(stdout, "%s: QueueSize - %d (%d)  \n", __func__, length, port->buffer_num);
@@ -742,7 +742,7 @@ int FlashCam::startCapture() {
     
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
     //start EGL thread for processing
-    if (_settings.useOpenGL) {
+    if (_settings.opengl_enabled) {
         FlashCamOpenGL::start();
     }
 #endif 
@@ -869,12 +869,12 @@ void FlashCam::resetFrameCallback() {
 /* SETTING MANAGEMENT */
 
 void FlashCam::getDefaultSettings(FLASHCAM_SETTINGS_T *settings) {
-    settings->width         = 640;
-    settings->height        = 480;
-    settings->verbose       = 1;
-    settings->update        = 0;
-    settings->mode          = FLASHCAM_MODE_CAPTURE;
-    settings->useOpenGL     = 0;
+    settings->width             = 640;
+    settings->height            = 480;
+    settings->verbose           = 1;
+    settings->update            = 0;
+    settings->mode              = FLASHCAM_MODE_CAPTURE;
+    settings->opengl_enabled    = 0;
 #ifdef BUILD_FLASHCAM_WITH_PLL
     FlashCamPLL::getDefaultSettings(settings);
 #endif    
@@ -887,7 +887,7 @@ void FlashCam::printSettings(FLASHCAM_SETTINGS_T *settings) {
     fprintf(stdout, "Verbose      : %d\n", settings->verbose);
     fprintf(stdout, "Update       : %d\n", settings->update);
     fprintf(stdout, "Camera-Mode  : %d\n", settings->mode);    
-    fprintf(stdout, "OpenGL       : %d\n", settings->useOpenGL);    
+    fprintf(stdout, "OpenGL       : %d\n", settings->opengl_enabled);    
 #ifdef BUILD_FLASHCAM_WITH_PLL
     FlashCamPLL::printSettings(settings);
 #endif    
@@ -1038,7 +1038,7 @@ int FlashCam::setSettingCaptureMode( FLASHCAM_MODE_T  mode ) {
     }
     
 #ifdef BUILD_FLASHCAM_WITH_OPENGL
-    if (_settings.useOpenGL) {
+    if (_settings.opengl_enabled) {
         _opengl_queue = mmal_queue_create();
         if (! _opengl_queue ) {
             vcos_log_error("Error allocating OpenGL queue");

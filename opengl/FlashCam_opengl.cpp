@@ -64,7 +64,7 @@ namespace FlashCamOpenGL {
         FlashCamUtilOpenGL::init(state->settings->width, state->settings->height);
         //init texture;
         state->opengl_tex_id = FlashCamUtilOpenGL::generateTexture(GL_TEXTURE_EXTERNAL_OES);
-        
+    
         // process buffer
         while (!state->opengl_worker_stop) {
             

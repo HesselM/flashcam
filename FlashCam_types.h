@@ -129,19 +129,22 @@ typedef struct {
                                                 //  - Note that `sensormode` is also defined as `params`. It is located at these locations as it
                                                 //    it is a `param`, but needs to be defined before the camera is initialised.
     
-    unsigned int useOpenGL;                     // Framecaptures are stored and provided in the callback via OpenGL textures instead of plain memory buffers.
+    unsigned int pll_enabled;                   // Use PLL            : On (1) or Off (0)
+    unsigned int opengl_enabled;                // Framecaptures are stored and provided in the callback via OpenGL textures instead of plain memory buffers.
                                                 // Note: Captured frame data stays in GPU domain during texture creation.
                                                 // Note: Only works in video mode.
 #ifdef BUILD_FLASHCAM_WITH_PLL  
     // PLL: Phase Lock Loop ==> Allows the camera (in videomode) to send lightpulse/flash upon frameexposure.
     //                          The Raspberry firmware only support flash when in capture mode, hence this option.
-    unsigned int pll_enabled;                   // Use PLL            : On (1) or Off (0)
     unsigned int pll_divider;                   // Frequency divider  : > 1                 (framerate / pll_divider = frequency of PLL signal)
     int pll_offset;                             // PWM / Camera offset: > 0                 (microseconds; target time between start of frame -> start of pwm
     float pll_pulsewidth;                       // Pulse width (ms)   : 0 to 1/frequency    (will be rounded according to available accuracy).
     unsigned int pll_fpsreducer_enabled;        // Use FPS-reducer    : On (1) or Off (0)
                                                 // --> Tracks real fps of system and reduces the target fps if they do not match
                                                 //     Disabling the reducer increases processing speed, but if the target fps is too high, no lock can be obtained.
+#endif
+#ifdef BUILD_FLASHCAM_WITH_OPENGL  
+    unsigned int opengl_packed;                 // 1 or 0. Returned texture is packed: that is, 4x Lumiance is pushed into single RGBA pixel.
 #endif
 } FLASHCAM_SETTINGS_T;
 
