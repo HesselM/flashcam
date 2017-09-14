@@ -220,10 +220,7 @@ namespace FlashCamPLL {
             uint64_t state_last_pulsetime_end_gpu   = state_last_pulsetime_start_gpu + (uint64_t) (state->settings->pll_pulsewidth*1000.0);
             if ((state_last_pulsetime_start_gpu <= frametime_gpu) && (frametime_gpu <= state_last_pulsetime_end_gpu)) 
                 *pll_state = true;
-            
-            //laser
-            fprintf(stdout, "Laser-Frame timing: %d - %" PRId64 " (%" PRId64 "/%" PRId64 ") \n", *pll_state, frametime_gpu, state_last_pulsetime_start_gpu,  state_last_pulsetime_end_gpu);
-
+        
             //update framerate
     #ifdef PLLTUNE
             float P = state->P;
