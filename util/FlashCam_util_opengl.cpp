@@ -18,11 +18,12 @@
 
 namespace FlashCamUtilOpenGL {
         
-    static GLuint progid_oes2rgb    = 0;
-    static GLuint progid_rgbblur    = 0;
-    static GLuint progid_rgbsobel   = 0;
-    static GLuint vbufid            = 0;
-    static GLuint fbufid            = 0;
+    static GLuint progid_oes2rgb        = 0;
+    static GLuint progid_oes2rgb_packed = 0;
+    static GLuint progid_rgbblur        = 0;
+    static GLuint progid_rgbsobel       = 0;
+    static GLuint vbufid                = 0;
+    static GLuint fbufid                = 0;
     
     static std::vector<GLuint> textures;
     
@@ -33,6 +34,7 @@ namespace FlashCamUtilOpenGL {
     //size
     static unsigned int _width      = 0;
     static unsigned int _height     = 0;
+    static bool _packed             = false;
     
     static bool initialised         = false;
     
@@ -55,6 +57,22 @@ namespace FlashCamUtilOpenGL {
     "varying vec2 texcoord;\n" \
     "void main(void) {\n" \
     "    gl_FragColor = texture2D(tex, texcoord);\n" \
+    "}\n"    
+    
+#define SRC_FSHADER_OES2RGB_PACKED \
+    "#extension GL_OES_EGL_image_external : require\n" \
+    "uniform samplerExternalOES tex;\n" \
+    "uniform vec2 texelsize;\n" \
+    "varying vec2 texcoord;\n" \
+    "void main(void) {\n" \
+    "    vec2 txc = texcoord;\n" \
+    "    txc.x    = txc.x*4.0;\n" \
+    "    vec4 col = vec4(0);\n" \
+    "    col.r = texture2D(tex, txc+vec2(0,0)*texelsize).r;\n" \
+    "    col.g = texture2D(tex, txc+vec2(1,0)*texelsize).r;\n" \
+    "    col.b = texture2D(tex, txc+vec2(2,0)*texelsize).r;\n" \
+    "    col.a = texture2D(tex, txc+vec2(3,0)*texelsize).r;\n" \
+    "    gl_FragColor = col;\n" \
     "}\n"    
     
     //blur shader
@@ -166,18 +184,19 @@ namespace FlashCamUtilOpenGL {
     
     GLuint loadFrameBuffer() {
         GLuint id;
-        glGenFramebuffers(1, &id); eglcheck();
-        glBindFramebuffer(GL_FRAMEBUFFER, id); eglcheck();
+        glGenFramebuffersOES(1, &id); eglcheck();
+        glBindFramebufferOES(GL_FRAMEBUFFER_OES, id); eglcheck();
         return id;
     }
     
-    void init(int w, int h) {        
+    void init(int w, int h, bool packed) {        
         //if already initialised: return.
         if (FlashCamUtilOpenGL::initialised)
             return;
         
         FlashCamUtilOpenGL::_width  = w;
         FlashCamUtilOpenGL::_height = h;
+        FlashCamUtilOpenGL::_packed = packed;
         
         EGLBoolean result;
         
@@ -262,10 +281,11 @@ namespace FlashCamUtilOpenGL {
         
         //Load Shaders
         //load program/buffers upon first call
-        FlashCamUtilOpenGL::progid_oes2rgb  = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
-        FlashCamUtilOpenGL::progid_rgbblur  = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
-        FlashCamUtilOpenGL::progid_rgbsobel = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
-
+        FlashCamUtilOpenGL::progid_oes2rgb          = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB);   
+        FlashCamUtilOpenGL::progid_oes2rgb_packed   = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_OES2RGB_PACKED);
+        FlashCamUtilOpenGL::progid_rgbblur          = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_RGBBLUR);   
+        FlashCamUtilOpenGL::progid_rgbsobel         = createShaderProgram(SRC_VSHADER_2D, SRC_FSHADER_RGBSOBEL);   
+        
         //setup buffers
         FlashCamUtilOpenGL::vbufid         = loadVertixBuffer();   
         FlashCamUtilOpenGL::fbufid         = loadFrameBuffer();  
@@ -316,7 +336,7 @@ namespace FlashCamUtilOpenGL {
     
     //transform a MMAL-buffer into a OpenGL texture.
     void mmalbuf2TextureOES(MMAL_BUFFER_HEADER_T *buffer, GLuint targetid, EGLImageKHR *targetimg) {
-        glBindFramebuffer(GL_FRAMEBUFFER, FlashCamUtilOpenGL::fbufid); eglcheck();
+        glBindFramebufferOES(GL_FRAMEBUFFER_OES, FlashCamUtilOpenGL::fbufid); eglcheck();
 
         //set texture id
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, targetid); eglcheck();
@@ -360,11 +380,17 @@ namespace FlashCamUtilOpenGL {
         glUseProgram(progid); eglcheck();        
         //Set framebuffer and render postitions
         glBindBuffer(GL_ARRAY_BUFFER, FlashCamUtilOpenGL::vbufid); eglcheck();
-        glBindFramebuffer(GL_FRAMEBUFFER, FlashCamUtilOpenGL::fbufid); eglcheck();
+        glBindFramebufferOES(GL_FRAMEBUFFER_OES, FlashCamUtilOpenGL::fbufid); eglcheck();
         
         //set output texture
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result_texid, 0); eglcheck();
-        glViewport (0, 0, width, height );
+        glFramebufferTexture2DOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_TEXTURE_2D, result_texid, 0); eglcheck();
+        
+        if (FlashCamUtilOpenGL::_packed) {
+            glViewport (0, 0, width / 4.0, height );
+        } else {
+            glViewport (0, 0, width, height );            
+        }
+        //glViewport (0, 0, 2048, 1024 );
 
         //Set active texture.
         glActiveTexture(GL_TEXTURE0); eglcheck();
@@ -392,7 +418,13 @@ namespace FlashCamUtilOpenGL {
     
     
     void textureOES2rgb(GLuint input_texid, GLuint result_texid) {        
-        texture2texture(input_texid, GL_TEXTURE_EXTERNAL_OES,  result_texid, progid_oes2rgb);       
+        if (FlashCamUtilOpenGL::_packed) {
+            FlashCamUtilOpenGL::_packed = false;
+            texture2texture(input_texid, GL_TEXTURE_EXTERNAL_OES,  result_texid, progid_oes2rgb_packed);
+            FlashCamUtilOpenGL::_packed = true;
+        } else {
+            texture2texture(input_texid, GL_TEXTURE_EXTERNAL_OES,  result_texid, progid_oes2rgb);
+        }
     }
     
     void textureRGBblur(GLuint input_texid, GLuint result_texid) {        

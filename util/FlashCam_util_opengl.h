@@ -71,7 +71,7 @@ namespace FlashCamUtilOpenGL {
     typedef void (*FLASHCAM_CALLBACK_OPENGL_DESTROY_T) (void);
 
     //initialize/stop OpenGL for use with FlashCam lib.
-    void init(int w, int h);    
+    void init(int w, int h, bool packed);    
     bool isInitialised();
     
     void destroyEGLImage(EGLImageKHR *targetimg);

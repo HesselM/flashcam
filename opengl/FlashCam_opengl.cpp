@@ -61,7 +61,7 @@ namespace FlashCamOpenGL {
         MMAL_STATUS_T status;
         
         //init OpenGL
-        FlashCamUtilOpenGL::init(state->settings->width, state->settings->height);
+        FlashCamUtilOpenGL::init(state->settings->width, state->settings->height, state->settings->opengl_packed);
         //init texture;
         state->opengl_tex_id = FlashCamUtilOpenGL::generateTexture(GL_TEXTURE_EXTERNAL_OES);
     
