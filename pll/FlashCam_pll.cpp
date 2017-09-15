@@ -287,7 +287,7 @@ namespace FlashCamPLL {
             state->pll_last_error               = error;
             state->pll_last_error_us            = error_us;
 
-            fprintf(stdout, "%s: PLL error %" PRId64 " \n", __func__, error_us);
+            //fprintf(stdout, "%s: PLL error %" PRId64 " \n", __func__, error_us);
 
     // FPS UPDATE
 

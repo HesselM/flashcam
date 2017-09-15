@@ -126,6 +126,7 @@ public:
     /*********   GETTERS / SETTERS  ***********/
     /******************************************/
     
+    int getGPUtime(uint64_t *us);
     
     /* Library Settings */
     

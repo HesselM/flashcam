@@ -864,6 +864,14 @@ void FlashCam::resetFrameCallback() {
 #endif 
 }
 
+int FlashCam::getGPUtime(uint64_t *us) {  
+    *us = 0;
+    if (_state.port && _state.port->is_enabled) {
+        MMAL_STATUS_T status = mmal_port_parameter_get_uint64(_state.port, MMAL_PARAMETER_SYSTEM_TIME, us);
+        return FlashCamMMAL::mmal_to_int(status);
+    }
+    return FlashCamMMAL::mmal_to_int(MMAL_ENOTREADY);
+}
 
 
 /* SETTING MANAGEMENT */
